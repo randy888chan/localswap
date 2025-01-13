@@ -3,3 +3,4 @@ javascript/.env
 python/.python-version
 python/.env
 __pycache__
+.aider*
