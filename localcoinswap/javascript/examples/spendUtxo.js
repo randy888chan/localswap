@@ -7,7 +7,7 @@ const { BitcoinSigner } = require('./signer');
 
 const BitcoinScript = script;
 
-const accountKey = ''; // Secret account key associated with your account. You can find this at the time of exporting Mnemonic
+let accountKey = ''; // Secret account key associated with your account. You can find this at the time of exporting Mnemonic
 
 function examplePrepareAndSignUtxo() {
   if (!accountKey) {
@@ -57,6 +57,9 @@ function examplePrepareAndSignUtxo() {
 }
 
 function loadKey(privKeyString) {
+  if (!accountKey) {
+    throw new Error('Account key is required');
+  }
   let privKey;
   if (privKeyString.split(':').length === 2) {
     privKey = new BitcoinSigner(privKeyString.split(':')[1]);
@@ -73,6 +76,9 @@ function getSelectedInputsOutputs(
   outputSet,
   sendAll = false
 ) {
+  if (!accountKey) {
+    throw new Error('Account key is required');
+  }
   const coinSelecter = sendAll ? split : coinSelect;
 
   let targets = outputSet;
@@ -127,6 +133,9 @@ function getSelectedInputsOutputs(
 }
 
 function buildTransaction(inputList, outputList, inputPubkey) {
+  if (!accountKey) {
+    throw new Error('Account key is required');
+  }
   const network = networks.bitcoin;
   const psbt = new Psbt({ network });
   psbt.setVersion(2);
@@ -173,11 +182,17 @@ function buildTransaction(inputList, outputList, inputPubkey) {
 }
 
 function signTransaction(keypair, psbt) {
+  if (!accountKey) {
+    throw new Error('Account key is required');
+  }
   psbt.signAllInputs(keypair);
   return psbt;
 }
 
 function finaliseTransaction(psbt, inputList, key) {
+  if (!accountKey) {
+    throw new Error('Account key is required');
+  }
   inputList.forEach((input, index) => {
     if (!input.redeemScript && !input.witnessScript) {
       psbt.finalizeInput(index);
@@ -215,6 +230,9 @@ function decryptoUtxoSecret(input, key) {
 }
 
 function finaliseTradeInput({ secret, instruction }) {
+  if (!accountKey) {
+    throw new Error('Account key is required');
+  }
   return function (inputIndex, input, script, isSegwit, isP2SH, isP2WSH) {
     let payment;
     if (secret === 'FeeWithdrawal') {
@@ -280,6 +298,9 @@ function witnessStackToScriptWitness(witness) {
 }
 
 function prepareTransaction(feeLevel, utxoSet, changeAddress, outputSet, privkeyWIF, sendAll = false) {
+  if (!accountKey) {
+    throw new Error('Account key is required');
+  }
   let inputList;
   let outputList;
   let totalFee;

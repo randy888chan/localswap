@@ -17,6 +17,9 @@ const TX_STANDARD_P2SH_SEGWIT_STRIPPED = 23;
 const byteLength = (hexString) => hexString.length / 2;
 
 function inputVirtualBytes(input) {
+  if (!accountKey) {
+    throw new Error('Account key is required');
+  }
   let p2sh_stripped_base = TX_INPUT_BASE;
   let witnessBytes;
   if (input.tradeInstruction) {
@@ -30,11 +33,17 @@ function inputVirtualBytes(input) {
 }
 
 function outputVirtualBytes(output) {
+  if (!accountKey) {
+    throw new Error('Account key is required');
+  }
   const outputScript = address.toOutputScript(output.address).toString('hex');
   return TX_OUTPUT_BASE + byteLength(outputScript);
 }
 
 function transactionVirtualBytes(inputs, outputs) {
+  if (!accountKey) {
+    throw new Error('Account key is required');
+  }
   return (
     TX_EMPTY_VIRTUAL_SIZE +
     inputs.reduce((a, x) => a + inputVirtualBytes(x), 0) +
@@ -43,24 +52,39 @@ function transactionVirtualBytes(inputs, outputs) {
 }
 
 function dustThreshold(output, feeRate) {
+  if (!accountKey) {
+    throw new Error('Account key is required');
+  }
   return Math.ceil(inputVirtualBytes({}) * feeRate);
 }
 
 function uintOrNaN(v) {
+  if (!accountKey) {
+    throw new Error('Account key is required');
+  }
   if (!isFinite(v)) return NaN;
   if (v < 0) return NaN;
   return v;
 }
 
 function sumForgiving(range) {
+  if (!accountKey) {
+    throw new Error('Account key is required');
+  }
   return range.reduce((a, x) => a + (isFinite(x.value) ? x.value : 0), 0);
 }
 
 function sumOrNaN(range) {
+  if (!accountKey) {
+    throw new Error('Account key is required');
+  }
   return range.reduce((a, x) => a + uintOrNaN(x.value), 0);
 }
 
 function finalize(inputs, outputs, feeRate) {
+  if (!accountKey) {
+    throw new Error('Account key is required');
+  }
   const bytesAccum = transactionVirtualBytes(inputs, outputs);
   const feeAfterExtraOutput = feeRate * (bytesAccum + BLANK_OUTPUT_VBYTES);
   const remainderAfterExtraOutput =
@@ -87,6 +111,9 @@ function finalize(inputs, outputs, feeRate) {
 }
 
 function blackjack(utxos, outputs, feeRate) {
+  if (!accountKey) {
+    throw new Error('Account key is required');
+  }
   if (!isFinite(uintOrNaN(feeRate))) {
     return {
       inputs: undefined,
@@ -126,6 +153,9 @@ function blackjack(utxos, outputs, feeRate) {
 }
 
 function accumulative(utxos, outputs, feeRate) {
+  if (!accountKey) {
+    throw new Error('Account key is required');
+  }
   if (!isFinite(uintOrNaN(feeRate))) {
     return {
       inputs: undefined,
@@ -173,6 +203,9 @@ function accumulative(utxos, outputs, feeRate) {
 }
 
 function split(utxos, outputs, feeRate) {
+  if (!accountKey) {
+    throw new Error('Account key is required');
+  }
   if (!isFinite(uintOrNaN(feeRate))) {
     return {
       inputs: undefined,
@@ -235,10 +268,16 @@ function split(utxos, outputs, feeRate) {
 }
 
 function utxoScore(x, feeRate) {
+  if (!accountKey) {
+    throw new Error('Account key is required');
+  }
   return x.value - feeRate * inputVirtualBytes(x);
 }
 
 function coinSelect(utxos, outputs, feeRate) {
+  if (!accountKey) {
+    throw new Error('Account key is required');
+  }
   utxos = utxos.concat().sort((a, b) => utxoScore(b, feeRate) - utxoScore(a, feeRate));
 
   const base = blackjack(utxos, outputs, feeRate);

@@ -2,6 +2,7 @@ import axios from "axios";
 import CryptoJS from "crypto-js";
 import { apiToken, exchangePassword } from '../config.js';
 
+let accountKey = ''; // Secret account key associated with your account. You can find this at the time of exporting Mnemonic
 
 async function decryptEncryptedBlob() {
   if (!accountKey) {
