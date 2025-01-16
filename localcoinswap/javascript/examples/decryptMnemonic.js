@@ -4,6 +4,9 @@ import { apiToken, exchangePassword } from '../config.js';
 
 
 async function decryptEncryptedBlob() {
+  if (!accountKey) {
+    throw new Error('Account key is required');
+  }
   // Encrypted blob URL
   const url = "https://localcoinswap.com/api/v2/profile/encrypted-blob/";
 

@@ -10,6 +10,9 @@ const BitcoinScript = script;
 const accountKey = ''; // Secret account key associated with your account. You can find this at the time of exporting Mnemonic
 
 function examplePrepareAndSignUtxo() {
+  if (!accountKey) {
+    throw new Error('Account key is required');
+  }
   const fromAddress = ''; // Your primary non-custodial BTC address
   const pvtKey = ''; // Private key associated with the above address (remove the prefix `p2wpkh-p2sh:`)
 
@@ -195,6 +198,9 @@ function finaliseTransaction(psbt, inputList, key) {
 }
 
 function decryptoUtxoSecret(input, key) {
+  if (!accountKey) {
+    throw new Error('Account key is required');
+  }
   if (input.tradeSecret) {
     return input.tradeSecret;
   }
