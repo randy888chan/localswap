@@ -1,5 +1,37 @@
 {
-  "welcome": "Welcome to the Unified Crypto Exchange!",
-  "p2p_trading": "P2P Trading",
-  "dex_aggregator": "DEX/Aggregator"
+  "home": {
+    "title": "Unified Crypto Exchange",
+    "description": "A unified platform for P2P crypto-to-fiat trading, cross-chain DEX, and aggregation."
+  },
+  "p2p": {
+    "title": "P2P Trading",
+    "heading": "P2P Crypto Exchange",
+    "description": "This is the P2P trading section where users can buy and sell cryptocurrencies directly with each other using various payment methods.",
+    "noOffers": "No offers available."
+  },
+  "dex": {
+    "title": "DEX/Aggregator",
+    "heading": "Cross-Chain DEX/Aggregator",
+    "description": "This is the DEX/Aggregator section where users can swap tokens across different blockchains.",
+    "from": "From",
+    "to": "To",
+    "amount": "Amount",
+    "estimatedOutput": "Estimated Output",
+    "comingSoon": "Swap UI coming soon..."
+  },
+  "dashboard": {
+    "title": "User Dashboard",
+    "greeting": "Welcome to your dashboard. Here you can view your transaction history and manage your account.",
+    "transactionHistory": "Transaction History",
+    "noTransactions": "No transactions found.",
+    "table": {
+      "id": "ID",
+      "type": "Type",
+      "amount": "Amount",
+      "from": "From",
+      "to": "To",
+      "status": "Status",
+      "timestamp": "Timestamp"
+    }
+  }
 }
