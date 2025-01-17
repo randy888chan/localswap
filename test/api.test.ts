@@ -1,11 +1,25 @@
 import { describe, it, expect } from 'vitest';
+import { getUserTransactions } from '../lib/db';
 
-describe('API', () => {
-  it('returns a message', async () => {
-    const response = await fetch('http://localhost:3000/api/hello');
-    const data = await response.json();
+describe('getUserTransactions', () => {
+  it('should return an array of transactions for a given user ID', async () => {
+    const userId = 'user123';
+    const transactions = await getUserTransactions(userId);
 
-    expect(data.message).toBe('Hello from the API!');
+    expect(Array.isArray(transactions)).toBe(true);
+    expect(transactions.length).toBeGreaterThan(0); // Assuming mock data has at least one transaction
+
+    // Add more specific assertions based on the expected structure of the mock transactions
+    const transaction = transactions[0];
+    expect(transaction).toHaveProperty('id');
+    expect(transaction).toHaveProperty('userId');
+    expect(transaction.userId).toBe(userId);
+    expect(transaction).toHaveProperty('type');
+    expect(transaction).toHaveProperty('amount');
+    expect(transaction).toHaveProperty('currencyFrom');
+    expect(transaction).toHaveProperty('currencyTo');
+    expect(transaction).toHaveProperty('status');
+    expect(transaction).toHaveProperty('timestamp');
   });
 });
 ````
