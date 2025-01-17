@@ -4,10 +4,16 @@
 
 
 ### Milestone 1: Core Features Implementation
-- [ ] Landing Page
-- [ ] P2P Trading Integration
-- [ ] Cross-Chain DEX & Aggregator Integration
-- [ ] User Dashboard
+- [ ] 1.1 Basic Landing Page
+    - [ ] Create basic landing page
+- [ ] 1.2 P2P Trading Integration (Skeleton)
+    - [ ] Create basic UI for P2P trading
+    - [ ] Implement mock API interaction for P2P
+- [ ] 1.3 Cross-Chain DEX & Aggregator Integration (Skeleton)
+    - [ ] Create basic UI for DEX/Aggregator
+    - [ ] Implement mock API interaction for DEX/Aggregator
+- [ ] 1.4 User Dashboard (Basic)
+    - [ ] Create basic user dashboard
 
 ### Milestone 2: Advanced Features
 - [ ] Dynamic Landing Pages
@@ -29,10 +35,24 @@
 ## Tasks
 
 ### Milestone 1: Core Features Implementation
-- [ ] Create basic landing page
-- [ ] Integrate LocalCoinSwap API for P2P trading
-- [ ] Integrate Rango Exchange API for cross-chain DEX and aggregator (Rango)
-- [ ] Create user dashboard to track transaction history
+- [ ] 1.1.1 Create a new Next.js project
+- [ ] 1.1.2 Set up the development environment
+- [ ] 1.1.3 Create a basic landing page component
+- [ ] 1.1.4 Set up a simple Next.js API route
+- [ ] 1.1.5 Write unit tests for landing page and API route
+- [ ] 1.1.6 Set up a GitHub Action to run tests
+- [ ] 1.2.1 Create a new page component for the P2P section
+- [ ] 1.2.2 Create a mock API interaction for P2P
+- [ ] 1.2.3 Modify P2P page to fetch and display mock offers
+- [ ] 1.2.4 Write unit tests for P2P functions and component
+- [ ] 1.3.1 Create a new page component for the DEX/Aggregator section
+- [ ] 1.3.2 Create a mock API interaction for DEX/Aggregator
+- [ ] 1.3.3 Modify DEX/Aggregator page to fetch and display mock swap quote
+- [ ] 1.3.4 Write unit tests for DEX/Aggregator functions and component
+- [ ] 1.4.1 Create a new page component for the user dashboard
+- [ ] 1.4.2 Create a mock database interaction for user transactions
+- [ ] 1.4.3 Modify dashboard page to fetch and display mock transactions
+- [ ] 1.4.4 Write unit tests for dashboard functions and component
 
 ### Milestone 2: Advanced Features
 - [ ] Implement dynamic landing pages
