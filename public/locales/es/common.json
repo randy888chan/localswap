@@ -1,5 +1,37 @@
 {
-  "welcome": "¡Bienvenido a Unified Crypto Exchange!",
-  "p2p_trading": "Comercio P2P",
-  "dex_aggregator": "Agregador DEX"
+  "home": {
+    "title": "Intercambio de Criptomonedas Unificado",
+    "description": "Una plataforma unificada para el comercio P2P de cripto a fiat, DEX de cadena cruzada y agregación."
+  },
+  "p2p": {
+    "title": "Comercio P2P",
+    "heading": "Intercambio de Criptomonedas P2P",
+    "description": "Esta es la sección de comercio P2P donde los usuarios pueden comprar y vender criptomonedas directamente entre sí utilizando varios métodos de pago.",
+    "noOffers": "No hay ofertas disponibles."
+  },
+  "dex": {
+    "title": "DEX/Agregador",
+    "heading": "DEX/Agregador de Cadena Cruzada",
+    "description": "Esta es la sección DEX/Agregador donde los usuarios pueden intercambiar tokens entre diferentes blockchains.",
+    "from": "De",
+    "to": "A",
+    "amount": "Cantidad",
+    "estimatedOutput": "Salida Estimada",
+    "comingSoon": "Interfaz de usuario de intercambio próximamente..."
+  },
+  "dashboard": {
+    "title": "Panel de Usuario",
+    "greeting": "Bienvenido a tu panel. Aquí puedes ver tu historial de transacciones y administrar tu cuenta.",
+    "transactionHistory": "Historial de Transacciones",
+    "noTransactions": "No se encontraron transacciones.",
+    "table": {
+      "id": "ID",
+      "type": "Tipo",
+      "amount": "Cantidad",
+      "from": "De",
+      "to": "A",
+      "status": "Estado",
+      "timestamp": "Fecha y Hora"
+    }
+  }
 }

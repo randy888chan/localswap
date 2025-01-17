@@ -1,32 +1,34 @@
 import React from 'react';
 import { GetServerSideProps } from 'next';
 import { getSwapQuote } from '../lib/rango';
+import { useTranslation } from 'next-i18next';
+import { serverSideTranslations } from 'next-i18next/serverSideTranslations';
 
 interface DEXPageProps {
   quote: any; // Replace 'any' with a more specific type later
 }
 
 const DEXPage: React.FC<DEXPageProps> = ({ quote }) => {
+  const { t } = useTranslation('common');
   return (
     <div className="container mx-auto p-4">
-      <h1 className="text-2xl font-bold mb-4">Cross-Chain DEX/Aggregator</h1>
+      <h1 className="text-2xl font-bold mb-4">{t('dex.heading')}</h1>
       <p className="mb-4">
-        This is the DEX/Aggregator section where users can swap tokens across
-        different blockchains.
+      {t('dex.description')}
       </p>
       {/* Placeholder UI elements */}
       <div className="bg-gray-100 p-4 rounded">
         {quote ? (
           <div>
-            <p>From: {quote.from.blockchain} {quote.from.symbol}</p>
-            <p>To: {quote.to.blockchain} {quote.to.symbol}</p>
-            <p>Amount: {quote.requestAmount}</p>
-            <p>Estimated Output: {quote.result.outputAmount}</p>
+            <p>{t('dex.from')}: {quote.from.blockchain} {quote.from.symbol}</p>
+            <p>{t('dex.to')}: {quote.to.blockchain} {quote.to.symbol}</p>
+            <p>{t('dex.amount')}: {quote.requestAmount}</p>
+            <p>{t('dex.estimatedOutput')}: {quote.result.outputAmount}</p>
             {/* Add more details from the quote as needed */}
           </div>
         ) : (
           <p className="text-gray-500">
-            Swap UI coming soon...
+            {t('dex.comingSoon')}
           </p>
         )}
       </div>
@@ -34,13 +36,14 @@ const DEXPage: React.FC<DEXPageProps> = ({ quote }) => {
   );
 };
 
-export const getServerSideProps: GetServerSideProps<DEXPageProps> = async () => {
+export const getServerSideProps: GetServerSideProps<DEXPageProps> = async ({ locale }) => {
   // Fetch a mock swap quote for now
   const quote = await getSwapQuote('BSC', 'AVAX_CCHAIN', '1');
 
   return {
     props: {
       quote,
+      ...(await serverSideTranslations(locale as string, ['common'])),
     },
   };
 };

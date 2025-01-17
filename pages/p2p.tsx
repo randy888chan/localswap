@@ -2,18 +2,20 @@ import React from 'react';
 import { GetServerSideProps } from 'next';
 import { getOffers } from '../lib/localcoinswap';
 import { Offer } from '../types/localcoinswap';
+import { useTranslation } from 'next-i18next';
+import { serverSideTranslations } from 'next-i18next/serverSideTranslations';
 
 interface P2PPageProps {
   offers: Offer[];
 }
 
 const P2PPage: React.FC<P2PPageProps> = ({ offers }) => {
+  const { t } = useTranslation('common');
   return (
     <div className="container mx-auto p-4">
-      <h1 className="text-2xl font-bold mb-4">P2P Crypto Exchange</h1>
+      <h1 className="text-2xl font-bold mb-4">{t('p2p.heading')}</h1>
       <p className="mb-4">
-        This is the P2P trading section where users can buy and sell
-        cryptocurrencies directly with each other using various payment methods.
+      {t('p2p.description')}
       </p>
       {/* Display offers */}
       <div className="bg-gray-100 p-4 rounded">
@@ -27,19 +29,20 @@ const P2PPage: React.FC<P2PPageProps> = ({ offers }) => {
             ))}
           </ul>
         ) : (
-          <p className="text-gray-500">No offers available.</p>
+          <p className="text-gray-500">{t('p2p.noOffers')}</p>
         )}
       </div>
     </div>
   );
 };
 
-export const getServerSideProps: GetServerSideProps<P2PPageProps> = async () => {
+export const getServerSideProps: GetServerSideProps<P2PPageProps> = async ({ locale }) => {
   const offers = await getOffers();
 
   return {
     props: {
       offers,
+      ...(await serverSideTranslations(locale as string, ['common'])),
     },
   };
 };
