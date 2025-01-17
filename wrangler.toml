@@ -1,0 +1,17 @@
+name = "landing-page-worker"
+type = "javascript"
+account_id = "YOUR_CLOUDFLARE_ACCOUNT_ID" # Replace with your account ID
+workers_dev = true
+route = "your-domain.com/landing/*" # Replace with your domain
+zone_id = "YOUR_CLOUDFLARE_ZONE_ID" # Replace with your zone ID
+compatibility_date = "2025-01-17"
+
+kv_namespaces = [
+  { binding = "LANDING_PAGES", id = "<your_namespace_id>" }
+]
+
+[build]
+  command = "npm install && npm run build" # Or your build command
+
+[build.upload]
+  format = "service-worker"
