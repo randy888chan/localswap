@@ -40,7 +40,6 @@ export default {
 
 // Function to generate HTML from the landing page data
 function generateLandingPageHtml(pageData: any): string {
-  // Basic template, you'll need to expand this based on your design
   return `
     <!DOCTYPE html>
     <html lang="en">
@@ -50,6 +49,21 @@ function generateLandingPageHtml(pageData: any): string {
       <title>${pageData.title}</title>
       <meta name="description" content="${pageData.description}">
       <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
+      <script type="application/ld+json">
+        {
+          "@context": "https://schema.org",
+          "@type": "LocalBusiness",
+          "name": "Unified Crypto Exchange",
+          "description": "${pageData.description}",
+          "url": "https://your-domain.com${pageData.url_slug}",
+          "address": {
+            "@type": "PostalAddress",
+            "addressLocality": "${pageData.content.location || 'Anytown'}",
+            "addressCountry": "${pageData.content.country_code || 'US'}"
+          },
+          "telephone": "+1-555-555-5555"
+        }
+      </script>
     </head>
     <body class="bg-gray-100">
       <div class="container mx-auto p-4">
