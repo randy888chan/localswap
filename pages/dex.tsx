@@ -46,6 +46,16 @@ interface DEXPageProps {
   quote: any; // Replace 'any' with a more specific type later
 }
 
+import React from 'react';
+import { GetServerSideProps } from 'next';
+import { getSwapQuote } from '../lib/rango';
+import { useTranslation } from 'next-i18next';
+import { serverSideTranslations } from 'next-i18next/serverSideTranslations';
+
+interface DEXPageProps {
+  quote: any; // Replace 'any' with a more specific type later
+}
+
 export const getServerSideProps: GetServerSideProps<DEXPageProps> = async ({ locale, locales, defaultLocale }) => {
   // Fetch a mock swap quote for now
   const quote = await getSwapQuote('BSC', 'AVAX_CCHAIN', '1');
