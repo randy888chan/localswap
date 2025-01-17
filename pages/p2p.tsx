@@ -36,13 +36,22 @@ const P2PPage: React.FC<P2PPageProps> = ({ offers }) => {
   );
 };
 
-export const getServerSideProps: GetServerSideProps<P2PPageProps> = async ({ locale }) => {
+import { GetServerSideProps } from 'next';
+import { getOffers } from '../lib/localcoinswap';
+import { serverSideTranslations } from 'next-i18next/serverSideTranslations';
+import { Offer } from '../types/localcoinswap';
+
+interface P2PPageProps {
+  offers: Offer[];
+}
+
+export const getServerSideProps: GetServerSideProps<P2PPageProps> = async ({ locale, locales, defaultLocale }) => {
   const offers = await getOffers();
 
   return {
     props: {
       offers,
-      ...(await serverSideTranslations(locale as string, ['common'])),
+      ...(await serverSideTranslations(locale as string, ['common'], null, locales)),
     },
   };
 };
