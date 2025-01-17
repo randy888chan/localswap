@@ -31,7 +31,7 @@
 ### Milestone 1: Core Features Implementation
 - [ ] Create basic landing page
 - [ ] Integrate LocalCoinSwap API for P2P trading
-- [ ] Integrate Rango Exchange API for cross-chain DEX and aggregator
+- [ ] Integrate Rango Exchange API for cross-chain DEX and aggregator (Rango)
 - [ ] Create user dashboard to track transaction history
 
 ### Milestone 2: Advanced Features
