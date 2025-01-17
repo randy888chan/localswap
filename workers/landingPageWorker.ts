@@ -9,17 +9,17 @@ export default {
     const url = new URL(request.url);
     const pathSegments = url.pathname.split('/').filter(segment => segment);
 
-    if (pathSegments.length >= 2 && pathSegments[0] === 'landing') {
-      const pageId = pathSegments.slice(0, 3).join('-'); // Extract page ID from the first three segments
+    if (pathSegments.length >= 2 && pathSegments[0] === 'api' && pathSegments[1] === 'landing') {
+      const pageId = pathSegments.slice(2).join('-'); // Extract page ID from the remaining segments
 
       try {
         const pageData = await env.LANDING_PAGES.get(pageId, 'json');
 
         if (pageData) {
           const html = generateLandingPageHtml(pageData); // Function to generate HTML from the data
-          return new Response(html, {
+          return new Response(JSON.stringify(pageData), {
             headers: {
-              'Content-Type': 'text/html',
+              'Content-Type': 'application/json',
               'Cache-Control': 'public, max-age=3600', // Cache for 1 hour
             },
           });
