@@ -35,24 +35,24 @@
 ## Tasks
 
 ### Milestone 1: Core Features Implementation
-- [ ] 1.1.1 Create a new Next.js project
-- [ ] 1.1.2 Set up the development environment
-- [ ] 1.1.3 Create a basic landing page component
-- [ ] 1.1.4 Set up a simple Next.js API route
-- [ ] 1.1.5 Write unit tests for landing page and API route
-- [ ] 1.1.6 Set up a GitHub Action to run tests
-- [ ] 1.2.1 Create a new page component for the P2P section
-- [ ] 1.2.2 Create a mock API interaction for P2P
-- [ ] 1.2.3 Modify P2P page to fetch and display mock offers
-- [ ] 1.2.4 Write unit tests for P2P functions and component
-- [ ] 1.3.1 Create a new page component for the DEX/Aggregator section
-- [ ] 1.3.2 Create a mock API interaction for DEX/Aggregator
-- [ ] 1.3.3 Modify DEX/Aggregator page to fetch and display mock swap quote
-- [ ] 1.3.4 Write unit tests for DEX/Aggregator functions and component
-- [ ] 1.4.1 Create a new page component for the user dashboard
-- [ ] 1.4.2 Create a mock database interaction for user transactions
-- [ ] 1.4.3 Modify dashboard page to fetch and display mock transactions
-- [ ] 1.4.4 Write unit tests for dashboard functions and component
+- [x] 1.1.1 Create a new Next.js project
+- [x] 1.1.2 Set up the development environment
+- [x] 1.1.3 Create a basic landing page component
+- [x] 1.1.4 Set up a simple Next.js API route
+- [x] 1.1.5 Write unit tests for landing page and API route
+- [x] 1.1.6 Set up a GitHub Action to run tests
+- [x] 1.2.1 Create a new page component for the P2P section
+- [x] 1.2.2 Create a mock API interaction for P2P
+- [x] 1.2.3 Modify P2P page to fetch and display mock offers
+- [x] 1.2.4 Write unit tests for P2P functions and component
+- [x] 1.3.1 Create a new page component for the DEX/Aggregator section
+- [x] 1.3.2 Create a mock API interaction for DEX/Aggregator
+- [x] 1.3.3 Modify DEX/Aggregator page to fetch and display mock swap quote
+- [x] 1.3.4 Write unit tests for DEX/Aggregator functions and component
+- [x] 1.4.1 Create a new page component for the user dashboard
+- [x] 1.4.2 Create a mock database interaction for user transactions
+- [x] 1.4.3 Modify dashboard page to fetch and display mock transactions
+- [x] 1.4.4 Write unit tests for dashboard functions and component
 
 ### Milestone 2: Advanced Features
 - [ ] Implement dynamic landing pages
