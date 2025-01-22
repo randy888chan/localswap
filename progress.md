@@ -49,6 +49,9 @@
 - [x] 1.3.2 Create a mock API interaction for DEX/Aggregator
 - [x] 1.3.3 Modify DEX/Aggregator page to fetch and display mock swap quote
 - [x] 1.3.4 Write unit tests for DEX/Aggregator functions and component
+- [ ] 1.3.5 Implement Rango API interaction for DEX/Aggregator
+- [ ] 1.3.6 Implement wallet connection (Rango integration)
+- [ ] 1.3.7 Implement queue manager for DEX/Aggregator transactions
 - [x] 1.4.1 Create a new page component for the user dashboard
 - [x] 1.4.2 Create a mock database interaction for user transactions
 - [x] 1.4.3 Modify dashboard page to fetch and display mock transactions
