@@ -12,6 +12,9 @@
 - [ ] 1.3 Cross-Chain DEX & Aggregator Integration (Skeleton)
     - [ ] Create basic UI for DEX/Aggregator
     - [ ] Implement mock API interaction for DEX/Aggregator
+    - [ ] 1.3.5 Implement Rango API interaction for DEX/Aggregator
+    - [ ] 1.3.6 Implement wallet connection (Rango integration)
+    - [ ] 1.3.7 Implement queue manager for DEX/Aggregator transactions
 - [ ] 1.4 User Dashboard (Basic)
     - [ ] Create basic user dashboard
 
