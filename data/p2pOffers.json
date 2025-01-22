@@ -1,0 +1,26 @@
+[
+  {
+    "id": "offer1",
+    "user": "Alice",
+    "cryptocurrency": "BTC",
+    "amount": 0.5,
+    "price": 30000,
+    "paymentMethod": "Bank Transfer"
+  },
+  {
+    "id": "offer2",
+    "user": "Bob",
+    "cryptocurrency": "ETH",
+    "amount": 2,
+    "price": 1800,
+    "paymentMethod": "PayPal"
+  },
+  {
+    "id": "offer3",
+    "user": "Charlie",
+    "cryptocurrency": "USDT",
+    "amount": 1000,
+    "price": 1.01,
+    "paymentMethod": "Cash"
+  }
+]
