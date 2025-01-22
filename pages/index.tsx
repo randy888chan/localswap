@@ -9,8 +9,17 @@ type Offer = {
   paymentMethod: string;
 };
 
+type SwapQuote = {
+  fromToken: string;
+  toToken: string;
+  amount: number;
+  estimatedGas: number;
+  rate: number;
+};
+
 const HomePage: React.FC = () => {
   const [p2pOffers, setP2pOffers] = useState<Offer[]>([]);
+  const [swapQuote, setSwapQuote] = useState<SwapQuote | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -25,12 +34,26 @@ const HomePage: React.FC = () => {
         setP2pOffers(data.offers);
       } catch (err: any) {
         setError(err.message || 'An error occurred');
+      }
+    };
+
+    const fetchSwapQuote = async () => {
+      try {
+        const res = await fetch('/api/dex');
+        if (!res.ok) {
+          throw new Error('Failed to fetch swap quote');
+        }
+        const data = await res.json();
+        setSwapQuote(data.quote);
+      } catch (err: any) {
+        setError(err.message || 'An error occurred');
       } finally {
         setIsLoading(false);
       }
     };
 
     fetchP2pOffers();
+    fetchSwapQuote();
   }, []);
 
   return (
@@ -62,7 +85,7 @@ const HomePage: React.FC = () => {
         )}
       </section>
 
-      {/* Other sections (DEX/Aggregator, User Dashboard) */}
+      {/* DEX/Aggregator Section */}
       <section className="mb-8">
         <h2 className="text-2xl font-semibold mb-4">
           Cross-Chain DEX & Aggregator
@@ -71,6 +94,18 @@ const HomePage: React.FC = () => {
           Swap tokens across different blockchains with the best rates from
           top decentralized exchanges.
         </p>
+        {isLoading && <p>Loading swap quote...</p>}
+        {error && <p className="text-red-500">Error: {error}</p>}
+        {!isLoading && !error && swapQuote && (
+          <div className="border p-4 rounded-md shadow-md">
+            <p>
+              Swap {swapQuote.amount} {swapQuote.fromToken} for{' '}
+              {swapQuote.toToken}
+            </p>
+            <p>Estimated Gas: {swapQuote.estimatedGas}</p>
+            <p>Rate: {swapQuote.rate}</p>
+          </div>
+        )}
       </section>
 
       <section>
