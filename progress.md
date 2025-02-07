@@ -80,4 +80,7 @@
 - [ ] Plan for future updates and expansions
 
 ## Notes
-- Any additional notes or discussions can be added here.
+- Integrated Rango's queue-manager for transaction queuing
+- Added wallet support for Bitcoin, Ethereum, and TON
+- Configured retry mechanisms and transaction resilience
+- Implemented wallet connections and network configurations
