@@ -1,49 +1,23 @@
-import { QueueManager } from '@rango-dao/queue-manager';
-import { RangoConfig } from '../config/rango';
+import { QueueManager } from '@rango-exchange/queue-manager';
+import { QueueManagerConfig } from '../config/rango';
 
 export class QueueService {
-  private instance: QueueManager;
-  private config: typeof RangoConfig['queueManager'];
+  private static instance: QueueManager;
 
-  constructor() {
-    this.config = RangoConfig.queueManager;
-    this.init();
-  }
-
-  private init(): void {
-    const config = {
-      verbose: true,
-      ...this.config,
-    };
-    
+  public static init(config: QueueManagerConfig): QueueManager {
     if (!this.instance) {
-      this.instance = new QueueManager(config);
-      this.setupEventListeners();
-    }
-  }
-
-  public execute<T>(input: T): Promise<boolean> {
-    try {
-      return this.instance.execute({
-        payload: input,
-        retryOptions: {
-          retries: this.config.maxRetries,
-          delay: this.config.retryDelay,
-        },
+      this.instance = new QueueManager({
+        retries: config.maxRetries,
+        retryDelay: config.retryDelay,
+        concurrency: config.concurrency,
+        autostart: config.enabled
       });
-    } catch (error) {
-      console.error('Queue execution failed:', error);
-      return Promise.resolve(false);
     }
+    return this.instance;
   }
 
-  private setupEventListeners(): void {
-    this.instance.on('enqueue', () => {
-      console.log('New transaction enqueued');
-    });
-
-    this.instance.on('complete', () => {
-      console.log('Transaction completed successfully');
-    });
+  public static getQueue(): QueueManager {
+    if (!this.instance) throw new Error('QueueManager not initialized');
+    return this.instance;
   }
 }
