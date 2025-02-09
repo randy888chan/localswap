@@ -45,21 +45,44 @@ const DexPage: React.FC = () => {
         
         const widget = getWidget({
           apiKey: token,
-          walletConnectProjectId: '', // Disable WalletConnect
           particleAuthParams: {
             projectId: process.env.NEXT_PUBLIC_PARTICLE_PROJECT_ID!,
             clientKey: process.env.NEXT_PUBLIC_PARTICLE_CLIENT_KEY!,
             appId: process.env.NEXT_PUBLIC_PARTICLE_APP_ID!,
+            chainOptions: {
+              btc: { isTestnet: false },
+              evm: [ 
+                { chainId: 1, name: 'Ethereum' },
+                { chainId: 56, name: 'BSC' }
+              ]
+            }
           },
           theme: 'dark',
           networkStatus: {
             Bitcoin: bitcoinStatus,
-            Ethereum: ethereumStatus
+            Ethereum: ethereumStatus,
+            Polygon: bitcoinStatus && ethereumStatus
           },
-          authCallback: (userInfo) => {
-            console.log('Particle user authenticated:', userInfo)
+          hooks: {
+            onRouteComputed: (route) => {
+              console.log('Best route:', route);
+              analytics.track('route_computed', route);
+            },
+            onSwapStatus: (status) => {
+              pubSub.publish(`swap-${status.requestId}`, status);
+            }
           }
         });
+
+        // Auto-refresh session token 30s before expiration
+        setTimeout(async () => {
+          const newRes = await fetch('/api/rango-refresh', {
+            method: 'POST',
+            body: JSON.stringify({ token })
+          });
+          const { token: newToken } = await newRes.json();
+          widget.updateConfig({ apiKey: newToken });
+        }, expires - Date.now() - 30000);
 
         widget.mount('#rango-widget-container');
         return () => {

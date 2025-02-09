@@ -115,10 +115,52 @@ app.post('/execute-swap', async (c) => {
       { expirationTtl: 86400 }
     );
 
-    txQueue.add(async () => {
-      try {
-        // 3. Create transaction
-        const transaction = await rango.createTransaction({
+    // Chain-specific transaction processor
+    const processTransaction = async (
+      transaction: any,
+      signer: BitcoinSigner
+    ) => {
+      switch(transaction.type) {
+        case 'RAW_BITCOIN':
+          return signer.signBitcoinTx(transaction.rawtx);
+        case 'EVM':
+          return signer.signEVMTx({
+            to: transaction.to,
+            data: transaction.data,
+            value: transaction.value
+          });
+        case 'SOLANA':
+          return signer.signSolanaTx(
+            transaction.serializedInstruction,
+            transaction.recentBlockhash
+          );
+        default:
+          throw new SwapError('UNSUPPORTED_CHAIN');
+      }
+    };
+
+    // Queue event handlers
+    txQueue
+      .on('active', async (job) => {
+        await saveQueueState(job.id, { status: 'processing' });
+      })
+      .on('completed', async (job, result) => {
+        await saveQueueState(job.id, {
+          status: 'completed',
+          txHash: result.txHash
+        });
+      })
+      .on('failed', async (job, error) => {
+        await saveQueueState(job.id, {
+          status: 'failed',
+          error: error instanceof SwapError ? error.code : 'UNKNOWN',
+          details: error instanceof SwapError ? error.details : {}
+        });
+      })
+      .add(async () => {
+        try {
+          // 3. Create transaction
+          const transaction = await rango.createTransaction({
           requestId: confirmedRoute.requestId,
           step: 1,
           userSettings: {
