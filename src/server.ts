@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { QueueManager } from '@rango-exchange/rango-client/queue-manager';
+import { ParticleNetwork } from '@particle-network/aa';
 import { BitcoinSigner } from './signer';
 import { KVNamespace } from '@cloudflare/workers-types';
 
@@ -10,6 +11,15 @@ interface Env {
 
 const app = new Hono<{ Bindings: Env }>();
 const queue = new QueueManager();
+
+// Initialize Particle AA
+const particle = new ParticleNetwork({
+  projectId: process.env.PARTICLE_PROJECT_ID,
+  clientKey: process.env.PARTICLE_CLIENT_KEY,
+  appId: process.env.PARTICLE_APP_ID,
+  chainName: 'evm', // Default chain
+  chainId: 1 // Ethereum mainnet
+});
 
 // Persistent queue storage
 async function saveQueueState(queueId: string, state: any) {

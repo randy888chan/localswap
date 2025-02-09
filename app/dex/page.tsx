@@ -45,11 +45,19 @@ const DexPage: React.FC = () => {
         
         const widget = getWidget({
           apiKey: token,
-          walletConnectProjectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID!,
+          walletConnectProjectId: '', // Disable WalletConnect
+          particleAuthParams: {
+            projectId: process.env.NEXT_PUBLIC_PARTICLE_PROJECT_ID!,
+            clientKey: process.env.NEXT_PUBLIC_PARTICLE_CLIENT_KEY!,
+            appId: process.env.NEXT_PUBLIC_PARTICLE_APP_ID!,
+          },
           theme: 'dark',
           networkStatus: {
             Bitcoin: bitcoinStatus,
             Ethereum: ethereumStatus
+          },
+          authCallback: (userInfo) => {
+            console.log('Particle user authenticated:', userInfo)
           }
         });
 

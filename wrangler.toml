@@ -15,7 +15,9 @@ KV_ENCRYPTION_KEY = "@kv_encryption_key"
 BTC_PRIVATE_KEY = "@btc_key::2"
 ETH_SIGNER_KEY = "@eth_signer::3"
 RANGO_API_KEY = "@rango_api_key"
-WALLETCONNECT_PROJECT_ID = "@wc_project_id"
+PARTICLE_PROJECT_ID = "@particle_project_id"
+PARTICLE_CLIENT_KEY = "@particle_client_key"
+PARTICLE_APP_ID = "@particle_app_id"
 
 [durable_objects]
 bindings = [
