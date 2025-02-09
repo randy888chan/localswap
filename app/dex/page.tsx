@@ -45,19 +45,27 @@ const DexPage: React.FC = () => {
           Bitcoin: bitcoinStatus,
           Ethereum: ethereumStatus
         }
-    });
+      });
 
-    widget.mount('#rango-widget-container');
-
-    return () => widget.unmount();
-  }, []);
+      widget.mount('#rango-widget-container');
+      return () => {
+        widget.unmount();
+        widget.destroy();
+      };
+    } catch (error) {
+      console.error('Widget initialization failed:', error);
+    }
+  }, [bitcoinStatus, ethereumStatus]);
 
   return (
     <div className="container mx-auto p-4">
-      <h1 className="text-3xl font-bold text-center mb-8">
-        Cross-Chain DEX & Aggregator
-      </h1>
-      <div id="rango-widget-container" className="min-h-[600px]" />
+      <div className="flex gap-4 mb-4">
+        <NetworkStatus status={bitcoinStatus} label="Bitcoin" />
+        <NetworkStatus status={ethereumStatus} label="Ethereum" />
+      </div>
+      <div id="rango-widget-container" className="min-h-[600px] relative">
+        {!bitcoinStatus && <div className="absolute inset-0 bg-red-500/20" />}
+      </div>
     </div>
   );
 };
