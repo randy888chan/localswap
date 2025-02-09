@@ -4,13 +4,15 @@ compatibility_date = "2024-03-01"
 workers_dev = true
 
 kv_namespaces = [
-  { binding = "TX_QUEUE", id = "<QUEUE_NAMESPACE_ID>" }
+  { binding = "TX_QUEUE", id = "<QUEUE_NAMESPACE_ID>" },
+  { binding = "P2P_OFFERS", id = "<P2P_OFFERS_ID>" }
 ]
 
 [build]
 command = "npm run build && wrangler types"
 
 [vars]
+LCS_API_KEY = "@lcs_api_key"  # Add LocalCoinSwap API key
 KV_ENCRYPTION_KEY = "@kv_encryption_key"
 BTC_PRIVATE_KEY = "@btc_key::2"
 ETH_SIGNER_KEY = "@eth_signer::3"

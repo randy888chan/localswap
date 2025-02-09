@@ -6,9 +6,12 @@
 ### Milestone 1: Core Features Implementation
 - [ ] 1.1 Basic Landing Page
     - [ ] Create basic landing page
-- [ ] 1.2 P2P Trading Integration (Skeleton)
-    - [ ] Create basic UI for P2P trading
-    - [ ] Implement mock API interaction for P2P
+- [x] 1.2 P2P Trading Integration
+    - [x] Create basic UI for P2P trading
+    - [x] Implement LocalCoinSwap API interaction for P2P
+    - [x] Trade commitment transactions
+    - [x] Escrow management
+    - [x] Encrypted trade secrets handling
 - [ ] 1.3 Cross-Chain DEX & Aggregator Integration (Skeleton)
     - [ ] Create basic UI for DEX/Aggregator
     - [ ] Implement mock API interaction for DEX/Aggregator

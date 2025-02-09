@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { QueueManager } from '@rango-exchange/rango-client/queue-manager';
 import { ParticleNetwork } from '@particle-network/aa';
+import { P2PService } from './p2pService';
 import { BitcoinSigner } from './signer';
 import { KVNamespace } from '@cloudflare/workers-types';
 
@@ -224,6 +225,54 @@ app.post('/execute-swap', async (c) => {
     return c.json({ 
       error: 'INTERNAL_ERROR',
       details: { message: 'An unexpected error occurred' }
+    }, 500);
+  }
+});
+
+app.post('/p2p-trade', async (c) => {
+  try {
+    const { offerId, accountKey, amount } = await c.req.json();
+    const signer = new BitcoinSigner(c.env.BTC_PRIVATE_KEY);
+    
+    // 1. Lock trade terms
+    const trade = await P2PService.tradeCommitment(offerId, accountKey, amount);
+    
+    // 2. Build funding transaction
+    const psbt = new Psbt({ network: networks.bitcoin });
+    psbt.addInput({
+      hash: Buffer.from(trade.funding_txid, 'hex'),
+      index: 0,
+      nonWitnessUtxo: Buffer.from(trade.funding_rawtx, 'hex')
+    });
+    
+    psbt.addOutput({
+      address: await signer.generateAddress(),
+      value: Math.floor(amount * 1e8)
+    });
+
+    // 3. Store in KV with encrypted secrets
+    await c.env.TX_QUEUE.put(
+      `p2p:${trade.id}`,
+      JSON.stringify({
+        psbt: psbt.toHex(),
+        secret: trade.secret,
+        timeout: trade.timeout,
+        status: 'funding_required'
+      }),
+      { expirationTtl: 3600 }
+    );
+
+    return c.json({
+      status: 'pending_funding',
+      tradeId: trade.id,
+      bitcoinAddress: trade.deposit_address,
+      requiredAmount: amount
+    });
+  } catch (error) {
+    console.error('P2P trade failed:', error);
+    return c.json({ 
+      error: 'TRADE_FAILURE',
+      details: error.response?.data || {}
     }, 500);
   }
 });
