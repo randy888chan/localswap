@@ -35,7 +35,38 @@ class SwapError extends Error {
 app.post('/execute-swap', async (c) => {
   try {
     const { from, to, amount } = await c.req.json();
-    
+    const rango = new RangoClient(c.env.RANGO_API_KEY);
+
+    // 1. Get best route
+    const bestRoute = await rango.getBestRoute({
+      from: {
+        blockchain: from.network.toUpperCase(),
+        symbol: from.token.symbol,
+        address: from.token.address || null
+      },
+      to: {
+        blockchain: to.network.toUpperCase(),
+        symbol: to.token.symbol,
+        address: to.token.address || null
+      },
+      amount: amount.toString(),
+      checkPrerequisites: false,
+      selectedWallets: {
+        [from.network.toUpperCase()]: from.address,
+        [to.network.toUpperCase()]: to.address
+      }
+    });
+
+    // 2. Confirm route
+    const confirmedRoute = await rango.confirmRoute({
+      requestId: bestRoute.requestId,
+      selectedWallets: {
+        [from.network.toUpperCase()]: from.address,
+        [to.network.toUpperCase()]: to.address
+      },
+      destination: to.address
+    });
+
     // Get encryption key from environment
     const encoder = new TextEncoder();
     const cryptoKey = await crypto.subtle.importKey(
@@ -76,23 +107,52 @@ app.post('/execute-swap', async (c) => {
 
     txQueue.add(async () => {
       try {
-        const item = await c.env.TX_QUEUE.get(queueId);
-        if (!item) throw new Error('Transaction not found');
-        
-        // Decrypt data
-        const buffer = Buffer.from(item, 'base64');
-        const data = await crypto.subtle.decrypt(
-          { name: 'AES-GCM', iv: buffer.subarray(0, 12) },
-          cryptoKey,
-          buffer.subarray(12)
-        );
-        
-        const { from, to, amount } = JSON.parse(new TextDecoder().decode(data));
+        // 3. Create transaction
+        const transaction = await rango.createTransaction({
+          requestId: confirmedRoute.requestId,
+          step: 1,
+          userSettings: {
+            slippage: '3.0',
+            infiniteApprove: false
+          },
+          validations: {
+            balance: true,
+            fee: true,
+            approve: true
+          }
+        });
+
+        // 4. Sign and broadcast
         const signer = new BitcoinSigner(c.env.BTC_PRIVATE_KEY);
-        const txHash = await signer.executeSwap({ from, to, amount });
+        const txHash = await signer.executeSwap(
+          transaction.type === 'EVM' 
+            ? transaction.rawTransaction
+            : transaction.serializedMessage
+        );
+
+        // 5. Monitor status
+        let status;
+        do {
+          await new Promise(resolve => setTimeout(resolve, 15000));
+          status = await rango.checkStatus({
+            requestId: confirmedRoute.requestId,
+            step: 1,
+            txId: txHash
+          });
+        } while (status?.status === 'RUNNING');
+
+        if (status?.status !== 'SUCCESS') {
+          throw new SwapError('TX_FAILED', { txHash, step: 1 });
+        }
+
         return { success: true, txHash };
       } catch (error) {
         await c.env.TX_QUEUE.delete(queueId);
+        await rango.reportFailure({
+          requestId: confirmedRoute.requestId,
+          eventType: 'TX_EXECUTION_FAILED',
+          reason: error instanceof Error ? error.message : 'Unknown error'
+        });
         console.error('Swap failed:', error);
     });
 

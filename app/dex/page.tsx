@@ -35,27 +35,39 @@ const DexPage: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  useEffect(() => {
-    try {
-      const widget = getWidget({
-        apiKey: process.env.NEXT_PUBLIC_RANGO_API_KEY!,
-        walletConnectProjectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID!,
-        theme: 'dark',
-        networkStatus: {
-          Bitcoin: bitcoinStatus,
-          Ethereum: ethereumStatus
-        }
-      });
+  const [widgetInitialized, setWidgetInitialized] = useState(false);
 
-      widget.mount('#rango-widget-container');
-      return () => {
-        widget.unmount();
-        widget.destroy();
-      };
-    } catch (error) {
-      console.error('Widget initialization failed:', error);
+  useEffect(() => {
+    const initWidget = async () => {
+      try {
+        const res = await fetch('/api/rango-token');
+        const { token } = await res.json();
+        
+        const widget = getWidget({
+          apiKey: token,
+          walletConnectProjectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID!,
+          theme: 'dark',
+          networkStatus: {
+            Bitcoin: bitcoinStatus,
+            Ethereum: ethereumStatus
+          }
+        });
+
+        widget.mount('#rango-widget-container');
+        return () => {
+          widget.unmount();
+          widget.destroy();
+        };
+      } catch (error) {
+        console.error('Widget initialization failed:', error);
+      }
+    };
+
+    if (!widgetInitialized) {
+      initWidget();
+      setWidgetInitialized(true);
     }
-  }, [bitcoinStatus, ethereumStatus]);
+  }, [widgetInitialized, bitcoinStatus, ethereumStatus]);
 
   return (
     <div className="container mx-auto p-4">
