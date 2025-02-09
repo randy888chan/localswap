@@ -1,17 +1,15 @@
-name = "landing-page-worker"
-type = "javascript"
-account_id = "YOUR_CLOUDFLARE_ACCOUNT_ID" # Replace with your account ID
+name = "dex-worker"
+main = "src/server.ts"
+compatibility_date = "2024-03-01"
 workers_dev = true
-route = "your-domain.com/landing/*" # Replace with your domain
-zone_id = "YOUR_CLOUDFLARE_ZONE_ID" # Replace with your zone ID
-compatibility_date = "2025-01-17"
 
 kv_namespaces = [
-  { binding = "LANDING_PAGES", id = "<your_namespace_id>" }
+  { binding = "TX_QUEUE", id = "<QUEUE_NAMESPACE_ID>" }
 ]
 
 [build]
-  command = "npm install && npm run build" # Or your build command
+command = "npm run build"
 
-[build.upload]
-  format = "service-worker"
+[vars]
+RANGO_API_KEY = "@rango_api_key"
+WALLETCONNECT_PROJECT_ID = "@wc_project_id"
