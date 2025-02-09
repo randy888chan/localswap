@@ -8,8 +8,16 @@ kv_namespaces = [
 ]
 
 [build]
-command = "npm run build"
+command = "npm run build && wrangler types"
 
 [vars]
+KV_ENCRYPTION_KEY = "@kv_encryption_key"
+BTC_PRIVATE_KEY = "@btc_key::2"
+ETH_SIGNER_KEY = "@eth_signer::3"
 RANGO_API_KEY = "@rango_api_key"
 WALLETCONNECT_PROJECT_ID = "@wc_project_id"
+
+[durable_objects]
+bindings = [
+  { name = "TRANSACTION_STORE", class_name = "TransactionStore" }
+]
