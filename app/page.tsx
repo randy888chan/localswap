@@ -41,7 +41,10 @@ const ErrorMessage: React.FC<{ message: string }> = ({ message }) => (
   <p className="text-red-500">Error: {message}</p>
 );
 
+import { useTranslation } from 'react-i18next';
+
 export default function Home() {
+  const { t } = useTranslation();
   const [personalizedContent, setContent] = useState<LandingContent | null>(null);
   const [p2pOffers, setP2pOffers] = useState<Offer[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);

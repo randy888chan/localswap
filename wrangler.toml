@@ -5,7 +5,13 @@ usage_model = "bundled"
 
 kv_namespaces = [
   { binding = "TX_QUEUE", id = "<QUEUE_NAMESPACE_ID>" },
-  { binding = "P2P_OFFERS", id = "<P2P_OFFERS_ID>" }
+  { binding = "P2P_OFFERS", id = "<P2P_OFFERS_ID>" },
+  { binding = "TRANSLATION_CACHE", id = "<TRANSLATION_CACHE_ID>" }
+]
+
+[ai]
+bindings = [
+  { name = "AI", type = "ai" }
 ]
 
 [build]

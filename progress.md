@@ -29,8 +29,14 @@
     - [x] Create basic user dashboard
 
 ### Milestone 2: Advanced Features
-- [ ] Dynamic Landing Pages
-- [ ] Multilingual Support
+- [x] Dynamic Landing Pages
+    - [x] LLM-powered content generation (Cloudflare AI)
+    - [x] User segment tracking & caching
+    - [x] Manual content refresh endpoint
+- [x] Multilingual Support
+    - [x] Language switcher component
+    - [x] Automatic content translation (M2M-100 model)
+    - [x] i18n middleware for path-based locales
 
 ### Milestone 3: Testing
 - [ ] Unit Tests
