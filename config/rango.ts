@@ -13,10 +13,31 @@ export interface QueueManagerConfig {
   retryDelay: number;
 }
 
+import AWS from 'aws-sdk';
+
+const kms = new AWS.KMS({
+  region: process.env.AWS_REGION,
+  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+});
+
+async function decryptKMSKey(arn: string): Promise<string> {
+  const data = await kms.decrypt({
+    CiphertextBlob: Buffer.from(arn, 'base64')
+  }).promise();
+  return data.Plaintext!.toString('utf-8');
+}
+
 export const RangoConfig = {
   baseURL: 'https://api.rango.exchange',
   timeout: 10000,
-  apiKey: process.env.RANGO_API_KEY,
+  apiKey: process.env.RANGO_API_KEY_STORAGE_ARN ? 
+    await decryptKMSKey(process.env.RANGO_API_KEY_STORAGE_ARN) : '',
+  
+  rotateApiKey: async () => {
+    const decrypted = await decryptKMSKey(process.env.RANGO_KEY_ROTATION_ARN!);
+    this.apiKey = decrypted;
+  },
   
   blockchainMappings: {
     bitcoin: 'BTC',

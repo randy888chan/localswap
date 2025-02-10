@@ -1,3 +1,5 @@
+import Prometheus from 'prom-client';
+
 interface NetworkStatus {
   bitcoin: boolean;
   ethereum: boolean;
@@ -8,6 +10,11 @@ interface NetworkStatus {
 
 export class NetworkMonitor {
   private interval: NodeJS.Timeout | null = null;
+  private rangoApiGauge = new Prometheus.Gauge({
+    name: 'rango_api_health',
+    help: 'Rango API connectivity status',
+    labelNames: ['chain'] as const
+  });
   
   startMonitoring(updateCallback: (status: NetworkStatus) => void) {
     this.interval = setInterval(async () => {
@@ -42,11 +49,16 @@ export class NetworkMonitor {
 
   private async checkRangoStatus() {
     try {
-      await fetch(`${RangoConfig.baseURL}/ping`, {
+      const response = await fetch(`${RangoConfig.baseURL}/ping`, {
         headers: { 'api-key': RangoConfig.apiKey }
       });
-      return true;
-    } catch {
+      
+      const success = response.status === 200;
+      this.rangoApiGauge.set({ chain: 'rango' }, success ? 1 : 0);
+      
+      return success;
+    } catch (error) {
+      this.rangoApiGauge.set({ chain: 'rango' }, 0);
       return false;
     }
   }
