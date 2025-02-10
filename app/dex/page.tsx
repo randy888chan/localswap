@@ -1,6 +1,7 @@
 'use client';
 import React, { useEffect, useState } from 'react';
 import { getWidget } from '@rango-exchange/rango-client/widget';
+import { useSession } from 'next-auth/react';
 
 function NetworkStatus({ status, label }: { status: boolean; label: string }) {
   return (
@@ -100,6 +101,30 @@ const DexPage: React.FC = () => {
     }
   }, [widgetInitialized, bitcoinStatus, ethereumStatus]);
 
+  const [ctaText, setCta] = useState('Start Trading');
+  const { data: session } = useSession();
+
+  useEffect(() => {
+    const generateCta = async () => {
+      try {
+        const res = await fetch('/api/generate-cta', {
+          method: 'POST',
+          body: JSON.stringify({
+            experience: session.user.experienceLevel,
+            balances: session.user.walletBalances,
+            device: navigator.platform
+          })
+        });
+        const data = await res.json();
+        setCta(data.text);
+      } catch {
+        setCta('Trade Now'); // Fallback
+      }
+    };
+    
+    generateCta();
+  }, [session.user.lastActivity]);
+
   return (
     <div className="container mx-auto p-4">
       <div className="flex gap-4 mb-4">
@@ -109,6 +134,9 @@ const DexPage: React.FC = () => {
       <div id="rango-widget-container" className="min-h-[600px] relative">
         {!bitcoinStatus && <div className="absolute inset-0 bg-red-500/20" />}
       </div>
+      <button className="bg-purple-600 text-white px-6 py-3 rounded-lg">
+        {ctaText}
+      </button>
     </div>
   );
 };
