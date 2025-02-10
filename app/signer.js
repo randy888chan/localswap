@@ -2,6 +2,7 @@ import ecc from 'tiny-secp256k1'
 import wif from 'wif'
 import BN from 'bn.js'
 import { ec } from 'elliptic'
+import * as bitcoin from 'bitcoinjs-lib'
 
 export class BitcoinSigner {
   constructor(privString) {
@@ -41,6 +42,20 @@ export class BitcoinSigner {
     const privString = wif.encode(128, this.privateKey, true);
     return new BitcoinMessageSigner(privString);
   }
+
+  signMessageForRango(message) {
+    const prefix = Buffer.from('\x18Bitcoin Signed Message:\n', 'utf8');
+    const messageBuffer = Buffer.from(message);
+    const payload = bitcoin.crypto.sha256(bitcoin.crypto.sha256(
+      Buffer.concat([prefix, Buffer.from(String(messageBuffer.length), 'utf8'), messageBuffer])
+    ));
+    
+    const { signature, recovery } = this.toMessageSigner().sign(payload);
+    return Buffer.concat([
+      signature,
+      Buffer.from([recovery + 27 + 4]) // Rango-specific recovery format
+    ]).toString('base64');
+  }
 }
 
 class BitcoinMessageSigner extends BitcoinSigner {
@@ -69,5 +84,19 @@ class BitcoinMessageSigner extends BitcoinSigner {
     const isHighX = R.x.cmp(n) >= 0 === true ? 1 : 0;
     const recid = (isHighX << 1) | (isOddY << 0);
     return recid;
+  }
+
+  verifyRangoSignature(message, signature) {
+    const decoded = Buffer.from(signature, 'base64');
+    const sig = decoded.slice(0, 64);
+    const recovery = decoded[64] - 27 - 4;
+    
+    const prefix = Buffer.from('\x18Bitcoin Signed Message:\n', 'utf8');
+    const messageBuffer = Buffer.from(message);
+    const payload = bitcoin.crypto.sha256(bitcoin.crypto.sha256(
+      Buffer.concat([prefix, Buffer.from(String(messageBuffer.length), 'utf8'), messageBuffer])
+    ));
+
+    return this.verify(payload, sig, recovery);
   }
 }
