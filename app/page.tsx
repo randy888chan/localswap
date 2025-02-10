@@ -42,41 +42,46 @@ const ErrorMessage: React.FC<{ message: string }> = ({ message }) => (
 );
 
 export default function Home() {
+  const [personalizedContent, setContent] = useState<LandingContent | null>(null);
   const [p2pOffers, setP2pOffers] = useState<Offer[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Fetch personalized content
+    fetch('/api/personalized-landing')
+      .then(res => res.json())
+      .then(data => {
+        setContent(data);
+        // Cookie tracking for returning visitors
+        document.cookie = `userSegment=${data.segment}; max-age=2592000`;
+      });
+
+    // Fetch P2P offers
     const fetchP2pOffers = async () => {
-      setIsLoading(true); // Start loading
-      setError(null); // Reset error
+      setIsLoading(true);
+      setError(null);
 
       try {
         const res = await fetch('/api/p2p');
-
         if (!res.ok) {
-          // Handle different HTTP error codes
           switch (res.status) {
-            case 404:
-              throw new Error('P2P offers not found');
-            case 500:
-              throw new Error('Server error fetching P2P offers');
-            default:
-              throw new Error('Failed to fetch P2P offers');
+            case 404: throw new Error('P2P offers not found');
+            case 500: throw new Error('Server error fetching P2P offers');
+            default: throw new Error('Failed to fetch P2P offers');
           }
         }
-
         const data = await res.json();
         setP2pOffers(data.offers);
       } catch (err: any) {
         setError(err.message || 'An unexpected error occurred');
       } finally {
-        setIsLoading(false); // Stop loading
+        setIsLoading(false);
       }
     };
 
     fetchP2pOffers();
-  }, []); // Empty dependency array: runs only once when the component mounts
+  }, []);
 
   return (
     <div className="container mx-auto p-4">
