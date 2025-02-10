@@ -50,9 +50,6 @@ export const metadata: Metadata = {
     images: ['/og-twitter.png'],
   },
   
-  alternates: {
-    canonical: SITE_URL,
-  },
 };
 
 export default function RootLayout({
