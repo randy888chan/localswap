@@ -64,7 +64,37 @@ class QueueManager {
     }
   }
 
-  private async processRangoTransaction(tx: Transaction) {
+  // Add state tracking and atomic locks
+  private transactionLocks = new Map<string, Promise<void>>();
+
+  async processTransaction(tx: Transaction) {
+    if (this.transactionLocks.has(tx.id)) {
+      return; // Already processing
+    }
+
+    const lockPromise = (async () => {
+      try {
+        // Acquire lock
+        const lockKey = `swap-lock:${tx.id}`;
+        await this.storage.put(lockKey, JSON.stringify({ 
+          lockedAt: Date.now(), 
+          processId: process.pid 
+        }), { expirationTtl: 300 });
+        
+        // Process transaction stages
+        await this.completeSwap(tx);
+        
+        this.rangoStatusMap.set(tx.id, 'confirmed');
+      } finally {
+        this.transactionLocks.delete(tx.id);
+      }
+    })();
+
+    this.transactionLocks.set(tx.id, lockPromise);
+    await lockPromise;
+  }
+
+  private async completeSwap(tx: Transaction) {
     try {
       const result = await rangoService.confirmSwap(tx.rangoRequestId!);
       if (result.status === 'PENDING') {

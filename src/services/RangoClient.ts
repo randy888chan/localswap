@@ -1,31 +1,68 @@
-interface GetBestRouteParams {
+interface ExecuteSwapParams {
+  requestId: string;
   from: {
     blockchain: string;
-    symbol: string;
-    address?: string;
+    symbol: string; 
+    address: string;
   };
   to: {
     blockchain: string;
     symbol: string;
-    address?: string;
+    address: string;
   };
   amount: string;
 }
 
 export class RangoClient {
-  private static API_VERSION = "v2";
-  
   constructor(
     private apiKey: string,
-    private baseUrl = "https://api.rango.exchange"
+    private wallet: WalletService = WalletService.getInstance()
   ) {}
 
-  async getBestRoute(params: GetBestRouteParams) {
-    return this.callAPI("/route", params);
+  // Critical security/validation additions
+  async executeSwap(params: ExecuteSwapParams) {
+    const balance = await this.wallet.getBalance(
+      params.from.blockchain, 
+      params.from.symbol,
+      params.from.address
+    );
+    
+    return this.callAPI('/swap', {
+      ...params,
+      availableBalance: balance.toString(),
+      validationConfig: {
+        balance: this.shouldValidateBalance(params),
+        fee: Number(params.amount) > 0.1, // Only validate fees for larger swaps
+        destinationTag: params.to.symbol === 'XRP' && !!params.to.address
+      }
+    });
+  }
+
+  private shouldValidateBalance(params: ExecuteSwapParams): boolean {
+    const threshold = RangoConfig.balanceThresholds[params.from.blockchain] || 0.01;
+    return Number(params.amount) >= threshold * 0.9; // Allow 10% slippage
+  }
+
+  async safeCancelSwap(requestId: string) {
+    try {
+      await this.callAPI(`/swap/${requestId}/cancel`, { method: 'DELETE' });
+      
+      // Verify cancellation on-chain
+      const success = await this.wallet.validateCancel(
+        requestId, 
+        'swap-cancel'
+      );
+      
+      if (!success) throw new Error('Not confirmed on-chain');
+      
+    } catch (error) {
+      console.error('Cancel failed, reverting state');
+      await this.wallet.revertSwapState(requestId);
+    }
   }
 
   private async callAPI(endpoint: string, params: object) {
-    const url = new URL(`/api/${RangoClient.API_VERSION}${endpoint}`, this.baseUrl);
+    const url = new URL(`/api/v2${endpoint}`, "https://api.rango.exchange");
     
     const response = await fetch(url.toString(), {
       method: "POST",
