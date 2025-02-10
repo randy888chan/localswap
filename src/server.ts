@@ -43,7 +43,47 @@ class SwapError extends Error {
   }
 }
 
-app.post('/execute-swap', async (c) => {
+// New imports
+import { RangoQueueDO } from './durable-objects/RangoQueueDO';
+
+app.post('/swap', async (c) => {
+  const { from, to, amount } = await c.req.json();
+  const nm = new NetworkMonitor();
+  
+  // Safety checks
+  if (!await nm.checkRangoStatus('rango_api')) {
+    return c.json({ error: "Rango API unavailable" }, 503);
+  }
+
+  // Get Rango instance
+  const rango = new RangoClient(c.env.RANGO_API_KEY);
+  
+  // Get Durable Object stub
+  const queueId = c.env.RANGO_QUEUE.newUniqueId();
+  const queue = c.env.RANGO_QUEUE.get(queueId);
+
+  // Process in 3 stages
+  return c.stream(async (stream) => {
+    // Stage 1: Get quote
+    await stream.write(`{"stage":1}\n`);
+    const quote = await rango.getBestRoute({ from, to, amount });
+    
+    // Stage 2: Queue processing
+    await stream.write(`{"stage":2}\n`);
+    await queue.fetch("http://queue/process", {
+      method: "POST",
+      body: JSON.stringify(quote)
+    });
+
+    // Stage 3: Final confirmation
+    await stream.write(`{"stage":3}\n`);
+    const result = await queue.fetch(`http://queue/status/${quote.requestId}`);
+    
+    await stream.end(result.body);
+  }, {
+    headers: { "Content-Type": "application/x-ndjson" }
+  })
+});
   try {
     const { from, to, amount } = await c.req.json();
     const rango = new RangoClient(c.env.RANGO_API_KEY);

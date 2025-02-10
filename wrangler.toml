@@ -1,7 +1,7 @@
-name = "dex-worker"
+name = "dex-aggregator"
+compatibility_date = "2024-03-20"
 main = "src/server.ts"
-compatibility_date = "2024-03-01"
-workers_dev = true
+usage_model = "bundled"
 
 kv_namespaces = [
   { binding = "TX_QUEUE", id = "<QUEUE_NAMESPACE_ID>" },
@@ -12,7 +12,8 @@ kv_namespaces = [
 command = "npm run build && wrangler types"
 
 [vars]
-LCS_API_KEY = "@lcs_api_key"  # Add LocalCoinSwap API key
+ENVIRONMENT = "production"
+LCS_API_KEY = "@lcs_api_key"
 KV_ENCRYPTION_KEY = "@kv_encryption_key"
 BTC_PRIVATE_KEY = "@btc_key::2"
 ETH_SIGNER_KEY = "@eth_signer::3"
@@ -23,5 +24,27 @@ PARTICLE_APP_ID = "@particle_app_id"
 
 [durable_objects]
 bindings = [
-  { name = "TRANSACTION_STORE", class_name = "TransactionStore" }
+  { name = "RANGO_QUEUE", class_name = "RangoQueueDO" }
 ]
+
+[[migrations]]
+tag = "v1"
+new_classes = ["RangoQueueDO"]
+
+[analytics_engine_datasets]
+RANGO_METRICS = { dataset = "rango_metrics" }
+
+[triggers]
+crons = ["0 * * * *"]  # Hourly queue flush
+
+[deployment]
+environments = [
+  { name = "staging",   vars = { ENVIRONMENT = "staging" }},
+  { name = "production",vars = { ENVIRONMENT = "production" }}
+]
+
+[env.staging]
+route = "staging.swap.example.com/*"
+
+[env.production] 
+route = "swap.example.com/*"
