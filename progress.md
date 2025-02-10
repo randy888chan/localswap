@@ -69,7 +69,6 @@
 - [x] 1.4.2 Create a mock database interaction for user transactions
 - [x] 1.4.3 Modify dashboard page to fetch and display mock transactions
 - [x] 1.4.4 Write unit tests for dashboard functions and component
-
 ### Milestone 2: Advanced Features
 - [ ] Implement dynamic landing pages
 - [ ] Add multilingual support
