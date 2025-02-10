@@ -61,6 +61,14 @@ export class RangoClient {
     }
   }
 
+  async registerWallet(network: string, address: string, signature: string) {
+    return this.callAPI('/wallets/register', {
+      network: RangoConfig.blockchainMappings[network] || network,
+      address,
+      authSignature: signature
+    });
+  }
+
   private async callAPI(endpoint: string, params: object) {
     const url = new URL(`/api/v2${endpoint}`, "https://api.rango.exchange");
     

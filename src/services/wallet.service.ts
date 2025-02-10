@@ -37,4 +37,30 @@ export class WalletService {
     }
     return wallet;
   }
+
+  public async connectRangoWallet(
+    network: string, 
+    address: string,
+    proof: { signature: string; message: string }
+  ): Promise<boolean> {
+    const wallet = this.getWallet(network);
+    
+    // Validate signature matches wallet address
+    const isValid = await wallet.verifySignature(
+      address, 
+      proof.message, 
+      proof.signature
+    );
+    
+    if (!isValid) throw new Error('Invalid wallet credentials');
+    
+    // Register wallet with Rango
+    const { success } = await rangoService.registerWallet(
+      network, 
+      address, 
+      proof.signature
+    );
+    
+    return success;
+  }
 }
