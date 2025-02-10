@@ -14,11 +14,21 @@ export interface QueueManagerConfig {
 }
 
 export const RangoConfig = {
+  baseURL: 'https://api.rango.exchange',
+  timeout: 10000,
+  apiKey: process.env.RANGO_API_KEY,
+  
   wallets: {
     bitcoin: {
       provider: 'your-bitcoin-node-url',
       network: 'mainnet',
-      multisig: false,
+      multisig: {
+        requiredSignatures: 2,
+        publicKeys: [
+          'xpub661My...', // Your key
+          'xpub68V4Z...'  // Rango key
+        ]
+      },
     },
     eth: {
       provider: 'your-ethereum-node-url',

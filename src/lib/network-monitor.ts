@@ -3,6 +3,7 @@ interface NetworkStatus {
   ethereum: boolean;
   solana: boolean;
   polygon: boolean;
+  rangoAPI: boolean;
 }
 
 export class NetworkMonitor {
@@ -14,7 +15,8 @@ export class NetworkMonitor {
         bitcoin: await this.pingServiceWorker(),
         ethereum: this.checkEVMProvider('ethereum'),
         solana: this.checkSolanaProvider(),
-        polygon: this.checkEVMProvider('polygon')
+        polygon: this.checkEVMProvider('polygon'),
+        rangoAPI: await this.checkRangoStatus()
       };
       updateCallback(status);
     }, 10000);
@@ -36,5 +38,16 @@ export class NetworkMonitor {
 
   stopMonitoring() {
     this.interval && clearInterval(this.interval);
+  }
+
+  private async checkRangoStatus() {
+    try {
+      await fetch(`${RangoConfig.baseURL}/ping`, {
+        headers: { 'api-key': RangoConfig.apiKey }
+      });
+      return true;
+    } catch {
+      return false;
+    }
   }
 }
