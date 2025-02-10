@@ -4,29 +4,29 @@
 
 
 ### Milestone 1: Core Features Implementation
-- [ ] 1.1 Basic Landing Page
-    - [ ] Create basic landing page
+- [x] 1.1 Basic Landing Page
+    - [x] Create basic landing page
 - [x] 1.2 P2P Trading Integration
     - [x] Create basic UI for P2P trading
     - [x] Implement LocalCoinSwap API interaction for P2P
     - [x] Trade commitment transactions
     - [x] Escrow management
     - [x] Encrypted trade secrets handling
-- [ ] 1.3 Cross-Chain DEX & Aggregator Integration (Skeleton)
-    - [ ] Create basic UI for DEX/Aggregator
-    - [ ] Implement mock API interaction for DEX/Aggregator
+- [x] 1.3 Cross-Chain DEX & Aggregator Integration (Skeleton)
+    - [x] Create basic UI for DEX/Aggregator
+    - [x] Implement mock API interaction for DEX/Aggregator
     - [x] 1.3.5 Implement Rango API interaction for DEX/Aggregator
       - [x] 1.3.5a Secure API key handling with session tokens
       - [x] 1.3.5b Implement full transaction lifecycle
       - [x] 1.3.5c Add cross-chain validation checks
       - [x] 1.3.5d Integrate transaction monitoring
-    - [ ] 1.3.6 Implement wallet connection (Rango integration)
+    - [x] 1.3.6 Implement wallet connection (Rango integration)
     - [x] 1.3.7 Implement queue manager for DEX/Aggregator transactions
       - [x] 1.3.7a Add rate limiting and retry mechanisms
       - [x] 1.3.7b Implement transaction state persistence
       - [x] 1.3.7c Add encrypted transaction storage
-- [ ] 1.4 User Dashboard (Basic)
-    - [ ] Create basic user dashboard
+- [x] 1.4 User Dashboard (Basic)
+    - [x] Create basic user dashboard
 
 ### Milestone 2: Advanced Features
 - [ ] Dynamic Landing Pages
