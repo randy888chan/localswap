@@ -39,9 +39,11 @@
     - [x] i18n middleware for path-based locales
 
 ### Milestone 3: Testing
-- [ ] Unit Tests
-- [ ] Integration Tests
-- [ ] End-to-End Tests
+- [x] Unit Tests
+- [x] Integration Tests
+- [x] End-to-End Tests
+  - [x] Add P2P trade lifecycle tests
+  - [x] Implement API contract testing
 
 ### Milestone 4: Deployment
 - [ ] Prepare for Deployment

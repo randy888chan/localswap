@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "test": "vitest",
+    "test:p2p": "vitest run tests/p2p.test.ts",
     "test:e2e": "cypress open"
   },
   "dependencies": {
