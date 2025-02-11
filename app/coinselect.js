@@ -55,9 +55,9 @@ export async function signMultiSigTransaction(psbt, accountKey, tradeSecret) {
 }
 
 export async function verifyMessageSignature(
-  message: string, 
-  signature: string, 
-  expectedAddress: string
+  message, 
+  signature, 
+  expectedAddress
 ) {
   try {
     const publicKey = secp.recoverPublicKey(
@@ -74,9 +74,9 @@ export async function verifyMessageSignature(
 }
 
 export function validateAddressOwnership(
-  address: string,
-  signedChallenge: string,
-  originalChallenge: string
+  address,
+  signedChallenge,
+  originalChallenge
 ) {
   const validSig = verifyMessageSignature(originalChallenge, signedChallenge, address);
   
