@@ -63,6 +63,17 @@ The Unified Crypto Exchange is a platform that combines P2P crypto-to-fiat tradi
 
 Contributions are welcome! Please fork the repository and create a pull request with your changes.
 
+## Security
+
+All cryptographic operations are performed using hardened WebCrypto implementations. 
+Private keys are never exposed to browser contexts and are managed exclusively in:
+
+1. Cloudflare Workers (PSBT signing)
+2. Hardware Security Modules (Key generation) 
+3. Trusted Execution Environments (Key usage)
+
+For auditing purposes, the entire signing process uses deterministic BitcoinJS templates.
+
 ## License
 
 This project is licensed under the MIT License.

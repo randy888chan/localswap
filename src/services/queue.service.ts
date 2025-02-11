@@ -20,4 +20,17 @@ export class QueueService {
     if (!this.instance) throw new Error('QueueManager not initialized');
     return this.instance;
   }
+
+  public static monitorHealth() {
+    this.instance.on('error', (err) => {
+      fetch('https://api.monitoring.service/alert', {
+        method: 'POST',
+        body: JSON.stringify({
+          project: 'crypto-exchange',
+          error: err.stack,
+          severity: 'CRITICAL'
+        })
+      });
+    });
+  }
 }
