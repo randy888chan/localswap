@@ -1,4 +1,91 @@
 const { address } = require('bitcoinjs-lib');
+const { keccak256 } = require('ethereumjs-util');
+const { utils } = require('ethers');
+
+export function validateLcsTransaction(txHex, expectedOutputs) {
+  const tx = bitcoin.Transaction.fromHex(txHex);
+  let totalOutput = 0;
+
+  // Validate outputs match expected structure
+  const outputValidation = tx.outs.map((out, index) => {
+    const script = bitcoin.script.decompile(out.script);
+    const address = bitcoin.address.fromOutputScript(out.script);
+    const expected = expectedOutputs[index];
+
+    if (!expected) return false;
+    
+    return address === expected.address && 
+           out.value >= expected.minValue &&
+           (!expected.script || bitcoin.script.toASM(script) === expected.script);
+  });
+
+  // Sum all output values
+  totalOutput = tx.outs.reduce((sum, out) => sum + out.value, 0);
+
+  return {
+    valid: outputValidation.every(v => v),
+    totalOutput,
+    fee: tx.getFee() // Only valid if we have inputs values
+  };
+}
+
+export async function signMultiSigTransaction(psbt, accountKey, tradeSecret) {
+  if (!accountKey || !tradeSecret) {
+    throw new Error('Credentials required for signing');
+  }
+
+  const decryptedSecret = decryptMessageWithAccountKey(tradeSecret, accountKey);
+  const keyPair = BitcoinSigner.fromAccountKey(accountKey);
+
+  psbt.data.inputs.forEach((input, index) => {
+    if (input.redeemScript) {
+      const witnessScript = deriveWitnessScript(decryptedSecret);
+      psbt.finalizeInput(index, (_, input, script) => { 
+        return finaliseTradeInput({
+          secret: decryptedSecret,
+          instruction: input.tradeInstruction
+        })(input.index, input, script);
+      });
+    } else {
+      psbt.signInput(index, keyPair);
+    }
+  });
+
+  return psbt;
+}
+
+export async function verifyMessageSignature(
+  message: string, 
+  signature: string, 
+  expectedAddress: string
+) {
+  try {
+    const publicKey = secp.recoverPublicKey(
+      keccak256(utils.toUtf8Bytes(message)), 
+      signature.slice(0, 64), 
+      parseInt(signature.slice(64))
+    );
+    
+    const recoveredAddress = utils.computeAddress(publicKey);
+    return recoveredAddress.toLowerCase() === expectedAddress.toLowerCase();
+  } catch (error) {
+    return false;
+  }
+}
+
+export function validateAddressOwnership(
+  address: string,
+  signedChallenge: string,
+  originalChallenge: string
+) {
+  const validSig = verifyMessageSignature(originalChallenge, signedChallenge, address);
+  
+  if (!validSig) {
+    throw new Error('Invalid address ownership proof');
+  }
+  
+  return true;
+}
 
 const TX_EMPTY_VIRTUAL_SIZE = ((4 + 4 + 1 + 1) * 4 + 1 + 1) / 4;
 
