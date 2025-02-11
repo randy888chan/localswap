@@ -56,3 +56,13 @@ route = "staging.swap.example.com/*"
 
 [env.production] 
 route = "swap.example.com/*"
+
+[[unsafe.bindings]]
+name = "LOW_LATENCY_MODE"
+type = "json"
+value = { 
+  edge_preference = "smart_routing", 
+  backup_regions = ["arn", "cdg", "hkg"],
+  tunnel_ports = [8545, 8546],
+  blockchain_sync = "optimistic"
+}

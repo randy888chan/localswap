@@ -33,4 +33,29 @@ export class QueueService {
       });
     });
   }
+
+  public static createPriorityChannel(priority: 'high' | 'medium' | 'low') {
+    return new QueueManager({
+      retries: RangoConfig.queueRetries[priority],
+      retryDelay: RangoConfig.queueRetryDelays[priority],
+      concurrency: RangoConfig.queueConcurrency[priority],
+      autostart: true
+    }, priority === 'high' ? 3 : priority === 'medium' ? 2 : 1);
+  }
+
+  public static handleContention() {
+    // Blockchain node priority mapping
+    const chainPriority: Record<string, number> = {
+      'bitcoin': 3, 
+      'ethereum': 2,
+      'tron': 1
+    };
+
+    this.instance.process((tx, ctx) => {
+      if(tx.chainId in chainPriority) {
+        ctx.setPriority(chainPriority[tx.chainId]);
+      }
+      return processTx(tx); // Existing transaction handler
+    });
+  }
 }
