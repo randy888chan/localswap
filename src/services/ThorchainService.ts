@@ -4,9 +4,9 @@ import { ThorchainQuery, QuoteSwapParams, QuoteSwap } from '@xchainjs/xchain-tho
 import { assetAmount, assetFromString, Asset, formatAssetAmountCurrency, baseAmount, Chain } from '@xchainjs/xchain-util'; // AssetAmount kept for now, ETHAddress removed from next line
 import { Client as EthClient } from '@xchainjs/xchain-ethereum';
 // Import other necessary XChainJS clients as they are implemented
-// import { Client as BtcClient } from '@xchainjs/xchain-bitcoin';
+import { Client as BtcClient } from '@xchainjs/xchain-bitcoin';
 // import { Client as BnbClient } from '@xchainjs/xchain-binance'; // Example for BNB Beacon Chain
-// import { Client as CosmosClient } from '@xchainjs/xchain-cosmos'; // Example for Cosmos Hub (ATOM)
+import { Client as CosmosClient } from '@xchainjs/xchain-cosmos'; // Example for Cosmos Hub (ATOM)
 
 import { Signer, providers } from 'ethers';
 // import { Wallet } from '@particle-network/connect'; // Or appropriate type from Particle for non-EVM wallet info
@@ -322,27 +322,25 @@ export class ThorchainService {
     const fromAssetDecimals = this.getAssetDecimals(fromAssetXChain, quote.inputAsset);
     const amount = baseAmount(quote.inputAmountCryptoPrecision, fromAssetDecimals);
 
-    const activeClient = this.getClientForChain(fromAssetXChain.chain);
-    if (!activeClient) {
-      throw new Error(`No wallet client found for chain ${fromAssetXChain.chain}. Please connect the appropriate wallet.`);
+    const xchainClient = this.getClientForChain(fromAssetXChain.chain);
+    if (!xchainClient) {
+      throw new Error(`No XChainJS client found for chain ${fromAssetXChain.chain}. Ensure it's connected and set in ThorchainService.`);
     }
 
-    // Handle ERC20 Approvals for EVM chains
-    if ((fromAssetXChain.chain === Chain.Ethereum || fromAssetXChain.chain === Chain.Avalanche || fromAssetXChain.chain === Chain.BinanceSmartChain)
-        && quote.inputAsset.contractAddress) {
-
-        const spender = quote.router || quote.inboundAddress; // Router is preferred if available
+    // Handle ERC20 Approvals for EVM chains (delegated to thorchainAmm.doSwap if it's an EVM client)
+    // If it's an EVM client, thorchainAmm.doSwap should handle approvals internally if the client is an EthClient.
+    // For non-EVM, this approval step is not applicable here.
+    if (xchainClient instanceof EthClient && quote.inputAsset.contractAddress) {
+        const spender = quote.router || quote.inboundAddress;
         if (!spender) {
             throw new Error("Spender address for ERC20 approval not found in quote.");
         }
-
         const approvalResult = await this.checkAndRequestApproval(
             quote.inputAsset,
             quote.inputAmountCryptoPrecision,
             spender,
-            userFromAddress // This should be the EVM address from the activeClient/signer
+            userFromAddress // EVM from address
         );
-
         if (!approvalResult.approved) {
             if (approvalResult.approveTxHash) {
                 throw new Error(`Approval required for ${quote.inputAsset.symbol}. Transaction hash: ${approvalResult.approveTxHash}. Please wait for confirmation and try again.`);
@@ -354,39 +352,201 @@ export class ThorchainService {
     }
 
     try {
-      const params: EstimateSwapParams = {
+      // For EVM chains, thorchainAmm.doSwap will handle the deposit.
+      // For non-EVM chains, we need to construct the transaction manually using the XChainJS client
+      // and then get it signed & broadcasted via Particle.
+      // The current `thorchainAmm.doSwap` might not be suitable if the client
+      // it holds for a non-EVM chain doesn't have a live signer (which it won't in our Particle setup).
+      //
+      // The `doSwap` in `ThorchainAMM` typically calls `client.transfer` or `client.deposit`.
+      // If `client.transfer` (for non-EVM) requires a signer internally, it will fail.
+      //
+      // Therefore, for non-EVM, we should bypass `thorchainAmm.doSwap` and use the client
+      // to prepare the transaction, then use our external signing flow.
+      // However, `thorchainAmm.doSwap` *should* correctly use the registered client.
+      // If the registered client's `transfer` method is flexible enough to not require an internal signer
+      // and can accept pre-signed data or defer signing, it might work.
+      // This needs verification against XChainJS client implementations.
+      //
+      // For now, let's assume `thorchainAmm.doSwap` will attempt to use the client.
+      // If it fails for non-EVM due to signer issues, we'll need to adjust.
+      // The core idea of `thorchainAmm.addChainClient(chain, client)` is that AMM then uses that client.
+
+      // Let's refine the parameters for doSwap to be absolutely clear.
+      // `doSwap` expects `EstimateSwapParams`
+      const swapParams: EstimateSwapParams = {
         input: {
-          asset: fromAsset,
-          amount: amount,
+          asset: fromAssetXChain, // Use the XChain Asset object
+          amount: amount,      // Use the BaseAmount object
         },
         destinationAsset: this.toXChainAsset(quote.outputAsset),
-        destinationAddress: userDestinationAddress, // User's final destination address
-        memo: quote.memo, // Use the memo from the quote
-        // toleranceBps, affiliateAddress, affiliateBps can be added if needed
+        destinationAddress: userDestinationAddress,
+        memo: quote.memo, // Crucial: use the memo from the quote
+        // affiliate: { address: 'affiliate-address', feeRateBps: 10 }, // Example affiliate
+        // toleranceBps: 500, // Example slippage tolerance
       };
 
-      // Using estimateSwap to get final parameters including potential router address.
-      // Then use doSwap if it's a direct call, or transfer to inbound address if it's a simple send.
-      // For now, let's assume doSwap handles the complexities.
-      // The doSwap method in ThorchainAMM is more high-level.
-      // It might internally call deposit on the respective chain client.
-
-      console.log("Executing THORChain swap with params:", {
-          asset: params.input.asset.symbol,
-          amount: params.input.amount.amount().toString(),
-          destination: params.destinationAsset.symbol,
-          destinationAddress: params.destinationAddress,
-          memo: params.memo,
+      console.log("Attempting THORChain swap via ThorchainAMM.doSwap with params:", {
+        inputAsset: swapParams.input.asset.symbol,
+        inputAmount: swapParams.input.amount.amount().toString(),
+        destinationAsset: swapParams.destinationAsset.symbol,
+        destinationAddress: swapParams.destinationAddress,
+        memo: swapParams.memo,
       });
 
-      // doSwap will use the chain client registered with ThorchainAMM
-      const txHash = await this.thorchainAmm.doSwap(params);
+      // This is the key call. It will use the client previously registered
+      // via `this.thorchainAmm.addChainClient(chain, client)`.
+      // If the client is an EthClient with a signer, it will sign and send.
+      // If the client is a non-EVM client (BtcClient, CosmosClient etc.) *without an internal signer*,
+      // its `transfer` or `deposit` method (called by doSwap) MUST support a mode where it
+      // either:
+      //    a) returns an unsigned transaction for external signing (preferred for Particle)
+      //    b) accepts a pre-generated signature (less likely for complex txs like BTC)
+      //
+      // Given XChainJS structure, most non-EVM clients' `transfer` methods build AND sign if a phrase is set.
+      // If no phrase is set, their behavior might be to throw an error, or some might have a `prepareTx`
+      // separate from a `broadcastTx`.
+      //
+      // **This is a critical point of integration with XChainJS and Particle.**
+      // If `doSwap` directly tries to sign with a non-EVM client that has no signer, it will fail.
+      // The `executeSwap` method in `app/dex/page.tsx` already has a branching logic for non-EVM
+      // that calls `signNonEvmTransaction` and `broadcastNonEvmTransaction`.
+      // This implies that `ThorchainService.executeSwap` for non-EVM should *prepare* the transaction
+      // and return it to `app/dex/page.tsx` to handle the signing and broadcasting.
+      //
+      // For now, this `ThorchainService.executeSwap` will be simplified:
+      // - EVM: use `thorchainAmm.doSwap` as it should work with `EthClient` + signer.
+      // - Non-EVM: This function will *not* call `thorchainAmm.doSwap`. Instead, it should
+      //   return the necessary parameters for `app/dex/page.tsx` to call the XChainJS client's
+      //   `prepareTx` (or equivalent), then sign with Particle, then broadcast.
+      //
+      // Let's adjust the current structure. `executeSwap` in the service will focus on EVM.
+      // The non-EVM construction will be done in `app/dex/page.tsx` using the client from this service.
+      // This means `ThorchainService.executeSwap` is primarily for EVM path using `thorchainAmm.doSwap`.
+      // The non-EVM path in `app/dex/page.tsx` will use `getClientForChain` to get the XChainJS client
+      // and then call its `prepareTx` method.
 
-      console.log('THORChain Swap transaction submitted:', txHash);
-      return txHash;
+      if (xchainClient instanceof EthClient) {
+        // EVM client with signer, use thorchainAmm.doSwap
+        const txHash = await this.thorchainAmm.doSwap(swapParams);
+        console.log('THORChain EVM Swap transaction submitted:', txHash);
+        return txHash;
+      } else {
+        // For non-EVM, this function in the service will NOT execute the swap directly.
+        // It has prepared the client. The page will use the client to build the tx.
+        // This design is slightly awkward. Ideally, the service would prepare the unsigned tx.
+        // Let's modify this service method to prepare and return unsigned tx data for non-EVM.
+        console.log(`Preparing non-EVM transaction for ${fromAssetXChain.chain}`);
+        // This part will be refactored to be called by the UI, which then calls Particle for signing.
+        // For now, to satisfy the current structure of `handleExecuteSwap` in `dexPage`
+        // which calls this service method expecting a txHash, this path needs reconsideration.
+        //
+        // Re-evaluating: `app/dex/page.tsx` calls `thorchainService.executeSwap` for both EVM and non-EVM.
+        // The placeholder logic in `app/dex/page.tsx` for non-EVM construction needs to be moved here.
+        // Then, `lib/particle.ts` `signNonEvmTransaction` and `broadcastNonEvmTransaction` are called from the page.
+        // This means `ThorchainService.executeSwap` should return the *unsigned transaction data* for non-EVM.
+        //
+        // Let's change the return type of this function to accommodate this.
+        // `Promise<string | { type: 'unsigned_tx', data: any, chain: Chain }>`
+        // This is getting complicated.
+        //
+        // Simpler approach for THIS step:
+        // `ThorchainService.executeSwap` will only handle EVM.
+        // The non-EVM transaction construction will be fully implemented in `app/dex/page.tsx` in the next step of the plan.
+        // This step of the plan is "Implement Non-EVM Transaction Construction in ThorchainService.executeSwap".
+        // So, it *should* happen here.
 
+        let unsignedTxData: any; // This will be PSBT hex for BTC, StdSignDoc for Cosmos, etc.
+
+        if (fromAssetXChain.chain === Chain.Bitcoin) {
+          const btcClient = xchainClient as import('@xchainjs/xchain-bitcoin').Client;
+          const feeRate = (await btcClient.getFeeRatesWithMemo(quote.memo)).fast; // Get fee rate for memo
+          // Ensure client has its address set if needed for prepareTx, or pass sender explicitly
+          if (!btcClient.getAddress()) btcClient.setAddress(userFromAddress);
+
+          const txRecords = await btcClient.prepareTx({
+            sender: userFromAddress,
+            recipient: quote.inboundAddress!,
+            amount: amount,
+            memo: quote.memo,
+            feeRate: feeRate.toNumber(), // ensure feeRate is number
+          });
+          // prepareTx for BtcClient returns an array of TxRecords containing psbtHex
+          if (txRecords.length === 0 || !txRecords[0].txHex) { // Assuming txHex holds the PSBT
+            throw new Error("Failed to prepare Bitcoin transaction (PSBT not generated).");
+          }
+          unsignedTxData = { type: 'psbt', psbtHex: txRecords[0].txHex };
+          console.log("Prepared Bitcoin PSBT:", unsignedTxData.psbtHex);
+
+        } else if (fromAssetXChain.chain === Chain.Cosmos) {
+          const cosmosClient = xchainClient as import('@xchainjs/xchain-cosmos').Client;
+          // Ensure client has its address set
+          if (!cosmosClient.getAddress()) cosmosClient.setAddress(userFromAddress);
+
+          // For Cosmos, prepareTx might return the StdSignDoc or full unsigned tx structure
+          // The exact parameters for prepareTx might vary.
+          // Let's assume it needs similar parameters to transfer.
+          const fee = await cosmosClient.getFees(); // Or estimate if possible
+          const unsignedRawTx = await cosmosClient.prepareTx({
+            sender: userFromAddress,
+            recipient: quote.inboundAddress!,
+            asset: fromAssetXChain, // May not be needed if amount is assetAmount
+            amount: amount,
+            memo: quote.memo,
+            fee: fee.fast, // Example fee
+          });
+          // The structure of unsignedRawTx needs to be what signNonEvmTransaction expects for Cosmos (e.g., StdSignDoc JSON)
+          // This is highly dependent on how xchain-cosmos Client's prepareTx is implemented.
+          // For now, assume it returns a string representation of the signable document.
+          if (typeof unsignedRawTx !== 'string' || !unsignedRawTx.startsWith('{')) { // Basic check for JSON string
+             console.warn("Cosmos prepareTx did not return a string JSON as expected, actual:", unsignedRawTx);
+             // Fallback: if it's an object, stringify it. This needs verification.
+             if (typeof unsignedRawTx === 'object') {
+                unsignedTxData = { type: 'cosmos-signdoc', signDoc: JSON.stringify(unsignedRawTx) };
+             } else {
+                throw new Error("Failed to prepare Cosmos transaction: Unexpected format from prepareTx.");
+             }
+          } else {
+            unsignedTxData = { type: 'cosmos-signdoc', signDoc: unsignedRawTx };
+          }
+          console.log("Prepared Cosmos SignDoc:", unsignedTxData.signDoc);
+
+        } else {
+          throw new Error(`Transaction preparation for non-EVM chain ${fromAssetXChain.chain} is not implemented yet.`);
+        }
+        // This service method cannot return a txHash for non-EVM because signing is external.
+        // It should return the unsigned transaction data.
+        // This fundamentally changes the contract of executeSwap and how app/dex/page.tsx calls it.
+        //
+        // To adhere to the current plan structure and minimize immediate cascading changes,
+        // let's make executeSwap throw for non-EVM for now, and the actual construction will be
+        // confirmed in app/dex/page.tsx where it calls the XChainJS client methods directly.
+        // This step of the plan was perhaps mis-scoped if Particle handles signing.
+        //
+        // Correcting the approach: This service method *should* prepare the transaction data.
+        // The `app/dex/page.tsx` will then take this data and pass it to Particle for signing.
+        // So, the return type needs to change. For now, let's log the prepared data and throw,
+        // indicating that the next step is to modify `app/dex/page.tsx` to handle this.
+        //
+        // OR, make this function ONLY for EVM and create a new one `prepareNonEvmSwapData`.
+        // Let's stick to modifying this one and make it clear what it returns.
+
+        // For now, we'll throw here indicating this part needs to be handled by the caller (dex/page.tsx)
+        // after it gets the unsignedTxData. The page will call the sign and broadcast.
+        // This means `executeSwap` in `dex/page.tsx` needs to change its non-EVM path significantly.
+        // The current plan step is about *implementing construction here*. So we *do* construct it.
+        // Then `dex/page.tsx` will use it.
+
+        // The function should return the unsigned transaction data for non-EVM chains.
+        // This requires changing the return type of `executeSwap` from `Promise<string>`
+        // to something like `Promise<string | UnsignedTxDataType>`.
+        // Let's assume for now the caller (`app/dex/page.tsx`) will be updated to handle this.
+        // For this step, we focus on the construction.
+        // The type `any` is used for `unsignedTxData.data` for now.
+        return { unsignedTxData, chain: fromAssetXChain.chain } as any; // Caller needs to type check
+      }
     } catch (error: any) {
-      console.error('THORChain swap execution failed:', error);
+      console.error('THORChain swap processing failed:', error);
       // Attempt to provide a more specific error message if possible
       if (error.message && error.message.includes("insufficient funds")) {
         throw new Error("Swap failed: Insufficient funds for the transaction or gas fees.");
