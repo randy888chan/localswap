@@ -1,5 +1,5 @@
 import { ZetaChainClient } from '@zetachain/toolkit/client';
-import { ZetaChainClientParams, GetQuoteResponse, GetFeesResponse, SendParams } from '@zetachain/toolkit/types';
+import { ZetaChainClientParams, GetQuoteResponse, GetFeesResponse } from '@zetachain/toolkit/types'; // SendParams removed
 import { Signer } from 'ethers'; // Using ethers v5 from ZetaChain toolkit's dependency
 import { formatUnits, parseUnits } from 'ethers/lib/utils'; // Import for formatting and parsing amounts
 
@@ -60,7 +60,6 @@ export class ZetaChainService {
         // It might not be directly derived from the signer for all chains.
         // This part needs careful review of @zetachain/toolkit documentation for use with an arbitrary EIP-1193 signer.
         // For now, assuming a basic setup.
-        // @ts-ignore TODO: Resolve ethers version conflict if this causes issues.
         signer: this.evmSigner, // Pass the ethers v5 signer
       };
 

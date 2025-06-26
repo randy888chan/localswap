@@ -23,27 +23,30 @@ LCS_API_KEY = "@lcs_api_key"
 KV_ENCRYPTION_KEY = "@kv_encryption_key"
 BTC_PRIVATE_KEY = "@btc_key::2"
 ETH_SIGNER_KEY = "@eth_signer::3"
-RANGO_API_KEY = "@rango_prod_key"
+# RANGO_API_KEY = "@rango_prod_key" # Removed
 BTC_SIGNER_KEY = "@btc_signer_v2"
 ETH_SIGNER_KEY = "@eth_signer_v2"
 PARTICLE_PROJECT_ID = "@particle_project_id"
 PARTICLE_CLIENT_KEY = "@particle_client_key"
 PARTICLE_APP_ID = "@particle_app_id"
 
-[durable_objects]
-bindings = [
-  { name = "RANGO_QUEUE", class_name = "RangoQueueDO" }
-]
+# Rango-specific Durable Object binding removed.
+# [durable_objects]
+# bindings = [
+#   { name = "RANGO_QUEUE", class_name = "RangoQueueDO" }
+# ]
 
-[[migrations]]
-tag = "v1"
-new_classes = ["RangoQueueDO"]
+# Rango-specific migration removed. If new DOs are added, new migrations will be needed.
+# [[migrations]]
+# tag = "v1"
+# new_classes = ["RangoQueueDO"]
 
-[analytics_engine_datasets]
-RANGO_METRICS = { dataset = "rango_metrics" }
+# Rango-specific analytics dataset removed.
+# [analytics_engine_datasets]
+# RANGO_METRICS = { dataset = "rango_metrics" }
 
 [triggers]
-crons = ["0 * * * *"]  # Hourly queue flush
+crons = ["0 * * * *"]  # Hourly queue flush. Review if this cron is still needed without Rango queue.
 
 [deployment]
 environments = [
