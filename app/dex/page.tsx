@@ -399,56 +399,75 @@ const DexPage: React.FC = () => {
       if (typeof executeSwapOutcome === 'string') {
         // EVM transaction, hash is directly returned
         txHash = executeSwapOutcome;
-      } else if (executeSwapOutcome && typeof executeSwapOutcome === 'object' && executeSwapOutcome.unsignedTxData) {
+        console.log(`EVM swap transaction hash: ${txHash}`);
+      } else if (executeSwapOutcome && typeof executeSwapOutcome === 'object' && executeSwapOutcome.unsignedTxData && executeSwapOutcome.chain) {
         // Non-EVM transaction, need to sign and broadcast
         const { unsignedTxData, chain: constructedChain } = executeSwapOutcome;
         if (constructedChain !== fromAssetDetails.chain) {
-          throw new Error("Chain mismatch between quote and constructed transaction.");
+          throw new Error(`Chain mismatch between quote (${fromAssetDetails.chain}) and constructed transaction (${constructedChain}).`);
         }
 
         console.log(`Constructed unsigned ${constructedChain} tx data:`, unsignedTxData);
         setTransactionStatus({ status: 'user_signing', message: `Please sign the ${constructedChain} transaction in your wallet...` });
 
-        // Determine the actual data to sign based on type
-        let dataToSign;
-        if (unsignedTxData.type === 'psbt' && unsignedTxData.psbtHex) {
-            dataToSign = unsignedTxData.psbtHex;
-        } else if (unsignedTxData.type === 'cosmos-signdoc' && unsignedTxData.signDoc) {
-            dataToSign = unsignedTxData.signDoc;
+        let dataToSign: string; // PSBT hex string or StdSignDoc JSON string
+        let originalStdSignDocForBroadcast: any = null; // For Cosmos broadcast
+
+        if (constructedChain === Chain.Bitcoin && unsignedTxData.type === 'psbt' && typeof unsignedTxData.psbtHex === 'string') {
+          dataToSign = unsignedTxData.psbtHex;
+        } else if (constructedChain === Chain.Cosmos && unsignedTxData.type === 'cosmos-signdoc' && typeof unsignedTxData.signDoc === 'string') {
+          dataToSign = unsignedTxData.signDoc;
+          originalStdSignDocForBroadcast = JSON.parse(unsignedTxData.signDoc); // Keep the parsed object for broadcast
         } else {
-            throw new Error(`Unknown unsigned transaction data type: ${unsignedTxData.type}`);
+          throw new Error(`Unknown or invalid unsigned transaction data type received for ${constructedChain}: ${unsignedTxData.type}`);
         }
 
         const signedTxData = await signNonEvmTransaction(constructedChain, dataToSign, sourceAddress);
         if (!signedTxData) {
-          throw new Error(`Failed to sign ${constructedChain} transaction via Particle. User might have rejected or an error occurred.`);
+          // signNonEvmTransaction should throw on failure, but handle null just in case
+          throw new Error(`Signing ${constructedChain} transaction failed or was rejected by the user.`);
         }
         console.log(`Signed ${constructedChain} tx data:`, signedTxData);
         setTransactionStatus({ status: 'broadcasting', message: `Broadcasting ${constructedChain} transaction...` });
 
-        txHash = await broadcastNonEvmTransaction(constructedChain, signedTxData);
-        if (!txHash) {
-          throw new Error(`Failed to broadcast ${constructedChain} transaction.`);
+        // Pass originalStdSignDocForBroadcast if it's a Cosmos transaction
+        const broadcastArgs: [Chain, string | { signature: string; signedTxBytes?: string }, any?] = [
+            constructedChain,
+            signedTxData,
+        ];
+        if (constructedChain === Chain.Cosmos && originalStdSignDocForBroadcast) {
+            broadcastArgs.push(originalStdSignDocForBroadcast);
         }
+
+        txHash = await broadcastNonEvmTransaction(...broadcastArgs);
+
+        if (!txHash) {
+          // broadcastNonEvmTransaction should throw on failure
+          throw new Error(`Broadcasting ${constructedChain} transaction failed.`);
+        }
+        console.log(`${constructedChain} swap transaction hash: ${txHash}`);
       } else {
-        throw new Error("Invalid response from executeSwap in ThorchainService.");
+        console.error("Invalid response from ThorchainService.executeSwap:", executeSwapOutcome);
+        throw new Error("Invalid or unexpected response from swap execution service.");
       }
 
       if (txHash) {
         setSwapTxHash(txHash);
         setTransactionStatus({ status: 'submitted', message: `Transaction ${txHash} submitted. Polling status...` });
+        // Make sure fromAssetDetails.chain is correct for polling
         pollTransactionStatus(txHash, fromAssetDetails.chain);
       } else {
+        // This case should ideally be caught by previous error throws if txHash is expected but not received.
         setError("Transaction hash not received after execution attempt.");
         setTransactionStatus(null);
       }
     } catch (e: any) {
-      console.error("Error executing swap:", e);
+      console.error("Error during handleExecuteSwap:", e);
       const errorMessage = e.message || "An unknown error occurred during the swap.";
       setError(errorMessage);
       setTransactionStatus({ status: 'error', message: errorMessage });
+      // Specific error for approval still relevant
       if (e.message && e.message.includes("Approval required")) {
-        // Keep the specific error message for approval
         setError(e.message + " Please wait for approval and try swapping again, or approve manually if tx hash provided.");
       }
     } finally {
