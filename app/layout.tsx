@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import StructuredData from "@/components/StructuredData";
+import Header from "@/components/Header"; // Import the Header component
+import { ParticleAuthProvider } from "@/components/ParticleAuthContext"; // Import the Auth Provider
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -63,7 +65,10 @@ export default function RootLayout({
         <StructuredData />
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        {children}
+        <ParticleAuthProvider> {/* Wrap with ParticleAuthProvider */}
+          <Header />
+          <main>{children}</main>
+        </ParticleAuthProvider>
       </body>
     </html>
   );
