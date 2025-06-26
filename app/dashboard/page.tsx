@@ -2,17 +2,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParticleAuth } from '@/components/ParticleAuthContext';
 
-// interface RangoSwap { // Old RangoSwap interface, will be replaced
-//   id: string;
-//   fromAmount: string;
-//   fromCurrency: string;
-//   toAmount: string;
-//   toCurrency: string;
-//   status: string;
-//   timestamp: string;
-// }
-
-// TODO: Define a new interface for unified transaction history
 interface TransactionHistoryItem {
   id: string;
   type: 'swap' | 'transfer' | 'contract_call'; // Example types
@@ -23,7 +12,6 @@ interface TransactionHistoryItem {
 }
 
 export default function Dashboard() {
-  // const [swapHistory, setSwapHistory] = useState<RangoSwap[]>([]); // Old state
   const [transactionHistory, setTransactionHistory] = useState<TransactionHistoryItem[]>([]);
   const { userInfo, walletAccounts, isLoadingAuth, isLoadingWallet } = useParticleAuth();
 
@@ -33,12 +21,6 @@ export default function Dashboard() {
       // This will involve new API endpoints and logic for Thorchain/ZetaChain/Particle.
       // For now, we can set some mock data or leave it empty.
       console.log('Dashboard: User and wallet connected. Fetch transaction history here.');
-      // Example:
-      // const loadHistory = async () => {
-      //   // const history = await fetch(`/api/user/transactions?wallet=${walletAccounts[0]}&userId=${userInfo.uuid}`).then(res => res.json());
-      //   // setTransactionHistory(history);
-      // };
-      // loadHistory();
 
       // Simulate fetching Thorchain swap history
       const mockThorchainHistory: TransactionHistoryItem[] = [
@@ -63,17 +45,6 @@ export default function Dashboard() {
       // and potentially augments with live status from ThorchainService if needed.
       setTransactionHistory(mockThorchainHistory);
     }
-    // Old Rango-specific logic:
-    // const loadSwaps = async () => {
-    //   const swaps = await fetch('/api/user/swaps').then(res => res.json());
-    //   setSwapHistory(filterSuccessfulSwaps(swaps));
-    // };
-    // Realtime updates via SSE
-    // const eventSource = new EventSource('/api/swaps/stream');
-    // eventSource.onmessage = (e) => {
-    //   setSwapHistory(prev => [JSON.parse(e.data), ...prev]);
-    // };
-    // return () => eventSource.close();
   }, [userInfo, walletAccounts]);
 
   if (isLoadingAuth) {
@@ -131,4 +102,4 @@ export default function Dashboard() {
 //   return swaps.filter(swap =>
 //     ['COMPLETED', 'SUCCESS'].includes(swap.status.toUpperCase())
 //   );
-// }
+}

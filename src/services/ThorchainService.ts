@@ -1,8 +1,8 @@
-import { Network, TxParams, XChainClient } from '@xchainjs/xchain-client';
-import { ThorchainAMM, QuoteSwapParams as ThorchainAmmQuoteSwapParams, EstimateSwapParams } from '@xchainjs/xchain-thorchain-amm';
-import { ThorchainQuery, QuoteSwapParams, QuoteSwap, LastBlock, LiquidityPool } from '@xchainjs/xchain-thorchain-query';
-import { assetAmount, assetFromString, Asset, formatAssetAmountCurrency, baseAmount, AssetAmount, Chain } from '@xchainjs/xchain-util';
-import { Client as EthClient, ETHAddress } from '@xchainjs/xchain-ethereum';
+import { Network, XChainClient } from '@xchainjs/xchain-client'; // TxParams removed
+import { ThorchainAMM, EstimateSwapParams } from '@xchainjs/xchain-thorchain-amm'; // ThorchainAmmQuoteSwapParams removed
+import { ThorchainQuery, QuoteSwapParams, QuoteSwap } from '@xchainjs/xchain-thorchain-query'; // LastBlock, LiquidityPool removed
+import { assetAmount, assetFromString, Asset, formatAssetAmountCurrency, baseAmount, Chain } from '@xchainjs/xchain-util'; // AssetAmount kept for now, ETHAddress removed from next line
+import { Client as EthClient } from '@xchainjs/xchain-ethereum';
 // Import other necessary XChainJS clients as they are implemented
 // import { Client as BtcClient } from '@xchainjs/xchain-bitcoin';
 // import { Client as BnbClient } from '@xchainjs/xchain-binance'; // Example for BNB Beacon Chain
@@ -137,8 +137,9 @@ export class ThorchainService {
             // For ERC20s, decimals MUST be known via SimpleAsset.
             // If simpleAsset.decimals is undefined here for a token, it's an issue.
             if (asset.symbol.includes('-')) { // Basic check for token (e.g., ETH.USDT-0x...)
-                 console.error(`Decimals for token ${asset.symbol} on ${asset.chain} must be provided via SimpleAsset.decimals. Cannot guess.`);
-                 return undefined; // Force explicit handling by caller
+                 const errorMsg = `Decimals for token ${asset.symbol} on ${asset.chain} must be provided via SimpleAsset.decimals. Cannot guess.`;
+                 console.error(errorMsg);
+                 throw new Error(errorMsg);
             }
             // If it's not a token (e.g. native asset of a chain we haven't listed above but is EVM compatible)
             console.warn(`Decimals for native-like asset ${asset.symbol} on EVM chain ${asset.chain} not explicitly defined, defaulting to 18. This might be incorrect if it's not the primary gas token.`);
