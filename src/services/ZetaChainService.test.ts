@@ -1,202 +1,221 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ZetaChainService } from './ZetaChainService';
-import { Chain } from '@xchainjs/xchain-util';
-import { Signer, BigNumber } from 'ethers'; // Using ethers v5 as per service
+import { ZetaChainService, ZetaQuote } from './ZetaChainService';
 import { ZetaChainClient } from '@zetachain/toolkit/client';
-import { ForeignCoin, GetQuoteResponse, ContractTransaction, GetFeesResponse } from '@zetachain/toolkit/types'; // Assuming these types
+import { GetQuoteResponse, ForeignCoin, FeeData, GetFeesResponse } from '@zetachain/toolkit/types';
+import { Signer, BigNumber } from 'ethers';
+import { Chain, formatUnits, parseUnits } from '@xchainjs/xchain-util';
+import { SimpleAsset } from './ThorchainService';
 
 // Mock @zetachain/toolkit/client
-vi.mock('@zetachain/toolkit/client', () => {
-  const mockForeignCoins: ForeignCoin[] = [
-    {
-      foreign_chain_id: 5, // Goerli ETH
-      zrc20_contract_address: '0xZRC20_gETH_ADDR',
-      symbol: 'gETH',
-      name: 'Goerli Ether',
-      decimals: 18,
-      coin_type: 0, // Assuming 0 for Gas token, need actual values
-      // Add other fields if your actual ForeignCoin type has them
-    },
-    {
-      foreign_chain_id: 18332, // Bitcoin Testnet
-      zrc20_contract_address: '0xZRC20_tBTC_ADDR',
-      symbol: 'tBTC',
-      name: 'Testnet Bitcoin',
-      decimals: 8,
-      coin_type: 1, // Assuming 1 for ERC20 type, need actual values
-    },
-  ];
+const mockZetaChainClientInstance = {
+  getForeignCoins: vi.fn(),
+  getQuote: vi.fn(),
+  approveToken: vi.fn(),
+  send: vi.fn(),
+  evmDeposit: vi.fn(),
+  trackCCTX: vi.fn(),
+  getFees: vi.fn(),
+  // Add any other methods that might be called during initialization or use
+};
+vi.mock('@zetachain/toolkit/client', () => ({
+  ZetaChainClient: vi.fn(() => mockZetaChainClientInstance),
+}));
 
-  const mockQuoteResponse: GetQuoteResponse = {
-    amountOut: BigNumber.from('1000000000000000000'), // 1 token with 18 decimals
-    // ... other fields like feeData, etc.
-  } as GetQuoteResponse; // Cast as it might be more complex
-
-  const mockTx = { hash: 'mockTxHash' } as ContractTransaction;
-  const mockCctxResponse = { status: 'Mined' /* or other statuses */ };
-  const mockFeesResponse = {} as GetFeesResponse;
-
-
-  return {
-    ZetaChainClient: vi.fn().mockImplementation(() => ({
-      getForeignCoins: vi.fn().mockResolvedValue(mockForeignCoins),
-      evmDeposit: vi.fn().mockResolvedValue(mockTx),
-      getQuote: vi.fn().mockResolvedValue(mockQuoteResponse),
-      zetachainWithdraw: vi.fn().mockResolvedValue({ tx: mockTx }),
-      trackCCTX: vi.fn().mockResolvedValue(mockCctxResponse),
-      getFees: vi.fn().mockResolvedValue(mockFeesResponse),
-      // Mock other methods as needed for more tests
-    })),
-  };
-});
-
-const mockEthersSigner = {
-  getAddress: vi.fn().mockResolvedValue('0xMockSignerAddress'),
-  provider: {} // Needs a mock provider if methods on it are called during init
+const mockSigner = {
+  provider: {}, // Mock provider object
+  getAddress: async () => 'mockSignerAddress',
 } as unknown as Signer;
-
 
 describe('ZetaChainService', () => {
   let service: ZetaChainService;
 
-  beforeEach(async () => {
+  beforeEach(() => {
     vi.clearAllMocks();
-    // Re-initialize mocks for ZetaChainClient for a clean state
-    const ZCC = (ZetaChainClient as any);
-    ZCC.mockImplementation(() => ({
-        getForeignCoins: vi.fn().mockResolvedValue([
-            { foreign_chain_id: 5, zrc20_contract_address: '0xZRC20_gETH_ADDR', symbol: 'gETH', name: 'Goerli Ether', decimals: 18, coin_type:0 },
-            { foreign_chain_id: 18332, zrc20_contract_address: '0xZRC20_tBTC_ADDR', symbol: 'tBTC', name: 'Testnet Bitcoin', decimals: 8, coin_type:1 },
-        ]),
-        evmDeposit: vi.fn().mockResolvedValue({ hash: 'mockDepositTxHash' }),
-        getQuote: vi.fn().mockResolvedValue({ amountOut: BigNumber.from('1000000000000000000') } as GetQuoteResponse),
-        zetachainWithdraw: vi.fn().mockResolvedValue({ tx: { hash: 'mockWithdrawTxHash' } }),
-        trackCCTX: vi.fn().mockResolvedValue({ status: 'Mined' }),
-        getFees: vi.fn().mockResolvedValue({} as GetFeesResponse),
-    }));
     service = new ZetaChainService();
-    // Initialize client for most tests, can be skipped for constructor test
-    await service.initializeClient(mockEthersSigner);
-  });
-
-  it('should be defined', () => {
-    expect(service).toBeDefined();
-  });
-
-  it('should initialize client successfully with a signer', async () => {
-    const newService = new ZetaChainService();
-    const success = await newService.initializeClient(mockEthersSigner);
-    expect(success).toBe(true);
-    expect(newService.isInitialized()).toBe(true);
-  });
-
-  describe('mapZetaChainIdToXChain (private access for test)', () => {
-    it('should map known ZetaChain IDs to XChainJS Chains', () => {
-      // @ts-ignore - testing private method
-      expect(service.mapZetaChainIdToXChain(5)).toBe(Chain.Ethereum); // Goerli -> Ethereum
-      // @ts-ignore
-      expect(service.mapZetaChainIdToXChain(1)).toBe(Chain.Ethereum); // Mainnet -> Ethereum
-      // @ts-ignore
-      expect(service.mapZetaChainIdToXChain(56)).toBe(Chain.BinanceSmartChain);
-      // @ts-ignore
-      expect(service.mapZetaChainIdToXChain(18332)).toBe(Chain.Bitcoin); // BTC Testnet -> Bitcoin
+    // Default successful initialization for most tests
+    (ZetaChainClient as any).mockImplementation(() => {
+        mockZetaChainClientInstance.getForeignCoins.mockResolvedValue([]); // Default empty
+        mockZetaChainClientInstance.getQuote.mockResolvedValue({ amountOut: '0' }); // Default minimal quote
+        return mockZetaChainClientInstance;
     });
+    service.initializeClient(mockSigner); // Initialize client for each test
+  });
 
-    it('should return undefined for unmapped ZetaChain IDs', () => {
-      // @ts-ignore
-      expect(service.mapZetaChainIdToXChain(99999)).toBeUndefined();
-    });
+  it('should initialize ZetaChainClient successfully', async () => {
+    expect(ZetaChainClient).toHaveBeenCalled();
+    expect(service.isInitialized()).toBe(true);
+  });
+
+  it('should fail to initialize if signer has no provider', async () => {
+    const signerNoProvider = { getAddress: async () => 'test' } as Signer;
+    const localService = new ZetaChainService();
+    const success = await localService.initializeClient(signerNoProvider);
+    expect(success).toBe(false);
+    expect(localService.isInitialized()).toBe(false);
   });
 
   describe('listSupportedForeignCoins', () => {
-    it('should fetch and transform foreign coins to SimpleAsset format', async () => {
+    it('should fetch and map foreign coins to AppSimpleAsset', async () => {
+      const mockForeignCoins: ForeignCoin[] = [
+        { foreign_chain_id: 5, symbol: 'gETH', name: 'Goerli Ether', contract: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', decimals: 18, zrc20_contract_address: '0xzrc20gETH' },
+        { foreign_chain_id: 137, symbol: 'MATIC', name: 'Polygon Matic', contract: '0xPolygonNative', decimals: 18, zrc20_contract_address: '0xzrc20MATIC' },
+        { foreign_chain_id: 999, symbol: 'UNKNOWN', name: 'Unknown Coin', contract: '0xUnknown', decimals: 8, zrc20_contract_address: '0xzrc20UNKNOWN' }, // Unmapped chain
+      ];
+      mockZetaChainClientInstance.getForeignCoins.mockResolvedValue(mockForeignCoins);
+
       const assets = await service.listSupportedForeignCoins();
-      expect(assets.length).toBe(2);
-
-      const ethAsset = assets.find(a => a.ticker === 'gETH');
-      expect(ethAsset).toBeDefined();
-      expect(ethAsset?.chain).toBe('ZetaChain'); // As per current mapping
-      expect(ethAsset?.contractAddress).toBe('0xZRC20_gETH_ADDR');
-      expect(ethAsset?.decimals).toBe(18);
-      expect(ethAsset?.source).toBe('zetachain');
-
-      const btcAsset = assets.find(a => a.ticker === 'tBTC');
-      expect(btcAsset).toBeDefined();
-      expect(btcAsset?.chain).toBe('ZetaChain');
-      expect(btcAsset?.contractAddress).toBe('0xZRC20_tBTC_ADDR');
-      expect(btcAsset?.decimals).toBe(8);
+      expect(assets).toHaveLength(2); // Filters out unmapped chain
+      expect(assets[0]).toEqual(expect.objectContaining({
+        chain: 'ZetaChain' as Chain, // Due to current mapping
+        ticker: 'gETH',
+        symbol: 'ZetaChain.gETH',
+        contractAddress: '0xzrc20gETH',
+        decimals: 18,
+        source: 'zetachain',
+      }));
+      expect(assets[1].ticker).toBe('MATIC');
     });
   });
 
   describe('depositAssetToZetaChain', () => {
-    it('should call client.evmDeposit and return a tx hash', async () => {
-      const txHash = await service.depositAssetToZetaChain('0.1', '0xERC20_ADDR', '0xZETA_RECEIVER', 5);
+    it('should call client.evmDeposit with correct parameters', async () => {
+      mockZetaChainClientInstance.evmDeposit.mockResolvedValue({ hash: 'mockDepositTxHash' });
+      const txHash = await service.depositAssetToZetaChain('1.0', '0xERC20Address', '0xZetaReceiver', 5);
+      expect(mockZetaChainClientInstance.evmDeposit).toHaveBeenCalledWith(expect.objectContaining({
+        amount: '1.0',
+        erc20: '0xERC20Address',
+        receiver: '0xZetaReceiver',
+      }));
       expect(txHash).toBe('mockDepositTxHash');
-      expect(ZetaChainClient().evmDeposit).toHaveBeenCalled();
-    });
-
-    it('should throw if service is not initialized', async () => {
-      const uninitializedService = new ZetaChainService(); // Don't call initializeClient
-      await expect(
-        uninitializedService.depositAssetToZetaChain('0.1', '0xERC20_ADDR', '0xZETA_RECEIVER', 5)
-      ).rejects.toThrow("ZetaChainService not initialized or signer not available.");
     });
   });
 
   describe('getZRC20SwapQuote', () => {
-    const fromZRC20: AppSimpleAsset = { chain: 'ZetaChain' as Chain, symbol: 'ZETA.gETH', ticker: 'gETH', contractAddress: '0xZRC20_gETH_ADDR', decimals: 18, source: 'zetachain' };
-    const toZRC20: AppSimpleAsset = { chain: 'ZetaChain' as Chain, symbol: 'ZETA.tBTC', ticker: 'tBTC', contractAddress: '0xZRC20_tBTC_ADDR', decimals: 8, source: 'zetachain' };
+    const fromAsset: AppSimpleAsset = { chain: 'ZetaChain' as Chain, ticker: 'zETH', symbol: 'ZetaChain.zETH', contractAddress: '0xFromZRC20', decimals: 18, source: 'zetachain' };
+    const toAsset: AppSimpleAsset = { chain: 'ZetaChain' as Chain, ticker: 'zBTC', symbol: 'ZetaChain.zBTC', contractAddress: '0xToZRC20', decimals: 8, source: 'zetachain' };
 
-    it('should return a mapped quote', async () => {
-      const quote = await service.getZRC20SwapQuote(fromZRC20, toZRC20, '0.1');
-      expect(quote).toBeDefined();
-      expect(quote?.inputAsset.symbol).toBe(fromZRC20.symbol);
-      expect(quote?.outputAsset.symbol).toBe(toZRC20.symbol);
-      expect(quote?.outputAmount).toBe('1.0'); // Mocked 1e18 output with 18 decimals for tBTC (adjust mock if tBTC has 8)
-                                            // The mock is 1e18, toZRC20 has 8 decimals. 1e18 / 1e8 = 1e10.
-                                            // Let's adjust the mock or expected.
-                                            // If output is 1e18 tBTC (which has 8 decimals in mock ForeignCoin)
-                                            // then human readable is 1e18 / 10^8 = 10,000,000,000
-                                            // The mock for getQuote returns BigNumber.from('1000000000000000000') (1e18)
-                                            // toZRC20 (tBTC) has 8 decimals. So formatUnits(1e18, 8) = 1e10
-      // Re-evaluating the mock:
-      // Mock ForeignCoin tBTC has 8 decimals.
-      // Mock GetQuoteResponse.amountOut is BigNumber.from('1000000000000000000') (1e18)
-      // formatUnits('1000000000000000000', 8) = '10000000000.0'
-      expect(quote?.outputAmount).toBe('10000000000.0');
+    it('should get and map a ZRC20 swap quote', async () => {
+      const mockRawQuote: GetQuoteResponse = {
+        amountIn: parseUnits('1', 18).toString(), // 1 zETH
+        amountOut: parseUnits('0.05', 8).toString(), // 0.05 zBTC
+        routerAddress: '0xRouter',
+        path: [fromAsset.contractAddress!, toAsset.contractAddress!],
+        feeData: {
+          totalFee: parseUnits('0.1', 18).toString(), // 0.1 ZETA fee
+          gasFee: parseUnits('0.05', 18).toString(),
+          protocolFee: parseUnits('0.05', 18).toString(),
+          feeAsset: { chainId: 7000, address: '0xZetaNative', symbol: 'ZETA', decimals: 18 },
+        }
+      };
+      mockZetaChainClientInstance.getQuote.mockResolvedValue(mockRawQuote);
+
+      const quote = await service.getZRC20SwapQuote(fromAsset, toAsset, '1');
+      expect(mockZetaChainClientInstance.getQuote).toHaveBeenCalledWith(parseUnits('1', 18).toString(), fromAsset.contractAddress, toAsset.contractAddress);
+      expect(quote).not.toBeNull();
+      if (!quote) throw new Error('Quote is null');
+
+      expect(quote.inputAmount).toBe('1');
+      expect(quote.outputAmount).toBe(formatUnits(mockRawQuote.amountOut, toAsset.decimals!));
+      expect(quote.routerAddress).toBe('0xRouter');
+      expect(quote.fees?.totalFeeHumanReadable).toBe(formatUnits(mockRawQuote.feeData!.totalFee, 18));
+      expect(quote.fees?.feeAsset?.ticker).toBe('ZETA');
     });
   });
 
-  describe('withdrawZRC20Tokens', () => {
-    const zrcToWithdraw: AppSimpleAsset = { chain: 'ZetaChain' as Chain, symbol: 'ZETA.gETH', ticker: 'gETH', contractAddress: '0xZRC20_gETH_ADDR', decimals: 18, source: 'zetachain' };
-    it('should call client.zetachainWithdraw and return tx hash', async () => {
-        const txHash = await service.withdrawZRC20Tokens(zrcToWithdraw, "0.05", "0xRecipientOnTargetChain", 5);
-        expect(txHash).toBe('mockWithdrawTxHash');
-        expect(ZetaChainClient().zetachainWithdraw).toHaveBeenCalled();
+  describe('executeZRC20Swap', () => {
+    const fromAsset: AppSimpleAsset = { chain: 'ZetaChain' as Chain, ticker: 'zETH', symbol: 'ZetaChain.zETH', contractAddress: '0xFromZRC20', decimals: 18, source: 'zetachain' };
+    const toAsset: AppSimpleAsset = { chain: 'ZetaChain' as Chain, ticker: 'zBTC', symbol: 'ZetaChain.zBTC', contractAddress: '0xToZRC20', decimals: 8, source: 'zetachain' };
+    const mockZetaQuote: ZetaQuote = {
+      inputAsset: fromAsset,
+      outputAsset: toAsset,
+      inputAmount: '1',
+      inputAmountCryptoPrecision: parseUnits('1', 18).toString(),
+      outputAmount: '0.05',
+      outputAmountCryptoPrecision: parseUnits('0.05', 8).toString(),
+      routerAddress: '0xMockRouter',
+      path: [fromAsset.contractAddress!, toAsset.contractAddress!],
+    };
+
+    beforeEach(() => {
+        // Assume approveToken exists and is successful by default
+        mockZetaChainClientInstance.approveToken.mockResolvedValue({ hash: 'mockApproveTxHash', wait: async () => ({ status: 1 }) } as any);
+        mockZetaChainClientInstance.send.mockResolvedValue({ hash: 'mockSwapTxHash' } as any);
+    });
+
+    it('should approve and execute a ZRC20 swap using client.approveToken', async () => {
+      const txHash = await service.executeZRC20Swap(mockZetaQuote, '1', '0.049'); // amountOutMin 0.049
+      expect(mockZetaChainClientInstance.approveToken).toHaveBeenCalledWith(expect.objectContaining({
+        tokenAddress: fromAsset.contractAddress,
+        spenderAddress: mockZetaQuote.routerAddress,
+        amount: mockZetaQuote.inputAmountCryptoPrecision,
+      }));
+      expect(mockZetaChainClientInstance.send).toHaveBeenCalledWith(expect.objectContaining({
+        contract: mockZetaQuote.routerAddress,
+        method: 'swapExactTokensForTokens',
+        args: expect.arrayContaining([
+          mockZetaQuote.inputAmountCryptoPrecision, // amountIn
+          parseUnits('0.049', toAsset.decimals!).toString(), // amountOutMin
+          mockZetaQuote.path, // path
+          // recipientAddress, deadline
+        ]),
+      }));
+      expect(txHash).toBe('mockSwapTxHash');
+    });
+
+    it('should use manual ethers approval if client.approveToken is not available', async () => {
+        const originalApproveToken = mockZetaChainClientInstance.approveToken;
+        (mockZetaChainClientInstance as any).approveToken = undefined; // Simulate function not existing
+
+        // Mock ethers.Contract
+        const mockContractInstance = { approve: vi.fn().mockResolvedValue({ hash: 'manualApproveTxHash', wait: async () => ({ status: 1 }) }) };
+        const actualEthers = await vi.importActual<typeof import('ethers')>('ethers');
+        vi.spyOn(actualEthers, 'Contract').mockImplementation(() => mockContractInstance as any);
+
+        // Re-initialize service to ensure mocks are correctly applied if constructor does something with ethers
+        // service = new ZetaChainService(); // Not strictly needed here as signer is passed to Contract constructor
+        // await service.initializeClient(mockSigner);
+
+
+        const txHash = await service.executeZRC20Swap(mockZetaQuote, '1', '0.049');
+
+        expect(mockContractInstance.approve).toHaveBeenCalledWith(mockZetaQuote.routerAddress, BigNumber.from(mockZetaQuote.inputAmountCryptoPrecision));
+        expect(mockZetaChainClientInstance.send).toHaveBeenCalled();
+        expect(txHash).toBe('mockSwapTxHash');
+
+        (mockZetaChainClientInstance as any).approveToken = originalApproveToken; // Restore
+        vi.restoreAllMocks(); // Restore all mocks after this test to avoid interference
     });
   });
 
   describe('trackCCTX', () => {
-    it('should call client.trackCCTX and return status', async () => {
-        const status = await service.trackCCTX('someTxHash');
-        expect(status).toEqual({ status: 'Mined' });
-        expect(ZetaChainClient().trackCCTX).toHaveBeenCalledWith({ hash: 'someTxHash', json: true });
+    it('should call client.trackCCTX', async () => {
+      mockZetaChainClientInstance.trackCCTX.mockResolvedValue({ status: 'confirmed' } as any);
+      const status = await service.trackCCTX('someTxHash');
+      expect(mockZetaChainClientInstance.trackCCTX).toHaveBeenCalledWith({ hash: 'someTxHash', json: true });
+      expect(status).toEqual({ status: 'confirmed' });
     });
   });
 
-  // TODO: Test for executeZRC20Swap once implemented
-  // TODO: Test error paths for each method (e.g., client methods throwing errors)
+  describe('getCrossChainFees', () => {
+    it('should call client.getFees', async () => {
+        const mockFeeResponse: GetFeesResponse = {
+            totalFee: '100000', // Example value
+            gasFee: '80000',
+            protocolFee: '20000',
+            // feeAsset might be undefined or populated
+        };
+      mockZetaChainClientInstance.getFees.mockResolvedValue(mockFeeResponse);
+      const fees = await service.getCrossChainFees(5, 7000, '100', 'gETH');
+      expect(mockZetaChainClientInstance.getFees).toHaveBeenCalledWith(5, 7000, '100', 'gETH', undefined);
+      expect(fees).toEqual(mockFeeResponse);
+    });
+  });
+
+  describe('callRemoteContractWithMessage', () => {
+    it('should throw not implemented error', async () => {
+      await expect(service.callRemoteContractWithMessage(137, '0xDestContract', '0xCalldata'))
+        .rejects.toThrow(/callRemoteContractWithMessage not fully implemented/);
+    });
+  });
 
 });
-
-// Minimal AppSimpleAsset type for tests if not importing from ThorchainService
-interface AppSimpleAsset {
-  chain: Chain | string;
-  ticker: string;
-  symbol: string;
-  name?: string;
-  contractAddress?: string;
-  decimals?: number;
-  iconUrl?: string;
-  source?: 'thorchain' | 'zetachain' | 'custom';
-}

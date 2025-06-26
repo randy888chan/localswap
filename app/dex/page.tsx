@@ -55,19 +55,19 @@ const DexPage: React.FC = () => {
   const [isFetchingZetaCoins, setIsFetchingZetaCoins] = useState<boolean>(false);
   const [zetaError, setZetaError] = useState<string | null>(null);
 
-  // Effect to initialize services and fetch assets
+  // Effect to initialize EVM signers and fetch all available assets
   useEffect(() => {
-    const initializeAndLoadAssets = async () => {
+    const initializeAndLoadAssetsEffect = async () => {
       setIsLoadingAssets(true);
       setError(null);
+
+      // EVM Signer Setup for ThorchainService and ZetaChainService
       if (walletAccounts && walletAccounts.length > 0) {
-        const signer = await getEthersSigner(); // For EVM interactions
+        const signer = await getEthersSigner();
         const provider = getEthersProvider();
 
         if (signer && provider) {
-          await thorchainService.setEvmSigner(signer, provider, Chain.Ethereum); // Specify chain
-          // Example for BSC if Particle connects to BSC and provides signer via Ethereum provider compatibility
-          // await thorchainService.setEvmSigner(signer, provider, Chain.BinanceSmartChain);
+          await thorchainService.setEvmSigner(signer, provider, Chain.Ethereum);
           console.log("ThorchainService EVM signer initialized for Ethereum.");
 
           const zetaSuccess = await zetaChainService.initializeClient(signer as EthersSigner);
@@ -78,19 +78,19 @@ const DexPage: React.FC = () => {
             setZetaError("Failed to initialize ZetaChain client.");
           }
         } else {
-          thorchainService.setEvmSigner(null); // Clear signer if not available
+          thorchainService.setEvmSigner(null);
           console.log("EVM signer/provider not available from Particle for Thorchain/ZetaChain.");
         }
       } else {
-        thorchainService.setEvmSigner(null); // Clear Thorchain EVM signer if wallet disconnects
-        // Handle ZetaChain de-initialization if applicable
-        console.log("Wallet disconnected, EVM signers cleared for services.");
+        thorchainService.setEvmSigner(null);
+        console.log("EVM wallet disconnected, EVM signers cleared for services.");
       }
 
+      // Fetching All Assets (Thorchain and ZetaChain)
       try {
         const tcAssets = await thorchainService.getAvailableAssets();
         let zcAssets: SimpleAsset[] = [];
-        if (zetaChainService.isInitialized()) {
+        if (zetaChainService.isInitialized()) { // Check if Zeta client was successfully initialized
           zcAssets = await zetaChainService.listSupportedForeignCoins();
           setZetaAssetsForDisplay(zcAssets);
         }
@@ -108,15 +108,16 @@ const DexPage: React.FC = () => {
         setFromAssets(combined);
         setToAssets(combined);
 
-        if (combined.length > 0) {
+        if (combined.length > 0 && !selectedFromAssetSymbol && !selectedToAssetSymbol) {
           const defaultFrom = combined.find(a => a.symbol === 'ETH.ETH') || combined[0];
           setSelectedFromAssetSymbol(defaultFrom.symbol);
 
           if (combined.length > 1) {
             const defaultTo = combined.find(a => a.symbol === 'BTC.BTC') || combined.find(a => a.symbol !== defaultFrom.symbol) || combined[1];
             if (defaultTo) setSelectedToAssetSymbol(defaultTo.symbol);
-          } else {
-             setSelectedToAssetSymbol('');
+          } else if (combined.length === 1) {
+            // If only one asset, it can't be selected as 'to' if also 'from'
+            setSelectedToAssetSymbol('');
           }
         }
       } catch (err: any) {
@@ -127,37 +128,93 @@ const DexPage: React.FC = () => {
       }
     };
 
-    initializeAndLoadAssets();
-  }, [walletAccounts, thorchainService, zetaChainService]);
-
+    initializeAndLoadAssetsEffect();
+  }, [walletAccounts, thorchainService, zetaChainService]); // Removed selectedFromAssetSymbol, selectedToAssetSymbol
 
   // Effect to fetch non-EVM address when selectedFromAssetSymbol changes to a non-EVM asset
   useEffect(() => {
-    const fetchNonEvmAddr = async () => {
+    const fetchNonEvmAddrEffect = async () => {
       const fromAssetDetails = allAssets.find(a => a.symbol === selectedFromAssetSymbol);
-      if (fromAssetDetails && !isEvmChain(fromAssetDetails.chain) && fromAssetDetails.chain !== Chain.THORChain /* THORChain itself doesn't need this flow */) {
+      if (fromAssetDetails && !isEvmChain(fromAssetDetails.chain) && fromAssetDetails.chain !== Chain.THORChain) {
         setError(null);
-        setCurrentNonEvmFromAddress(null);
+        setCurrentNonEvmFromAddress(null); // Reset before fetching
         console.log(`Fetching non-EVM address for ${fromAssetDetails.chain}`);
         try {
-          const address = await getNonEvmAddress(fromAssetDetails.chain);
-          if (address) {
-            setCurrentNonEvmFromAddress(address);
-            console.log(`Got ${fromAssetDetails.chain} address from Particle: ${address}`);
+          // Ensure Particle Connect is available and user is "connected" in some form
+          // The actual connection state for non-EVM wallets via Particle might be implicit
+          // if `getNonEvmAddress` relies on an active WalletConnect session managed by Particle.
+          if (userInfo) { // Assuming userInfo implies some form of active Particle session
+            const address = await getNonEvmAddress(fromAssetDetails.chain);
+            if (address) {
+              setCurrentNonEvmFromAddress(address);
+              console.log(`Got ${fromAssetDetails.chain} address from Particle: ${address}`);
+            } else {
+              setError(`Could not get address for ${fromAssetDetails.chain}. Ensure wallet is connected and supports this chain via Particle.`);
+            }
           } else {
-            setError(`Could not get address for ${fromAssetDetails.chain} from connected wallet. Ensure the correct wallet type is connected and Particle supports it.`);
+            console.warn("User not logged in via Particle, cannot fetch non-EVM address yet.");
+            // setError("Please log in to connect non-EVM wallets."); // Or similar user guidance
           }
         } catch (e: any) {
           setError(`Error fetching address for ${fromAssetDetails.chain}: ${e.message}`);
         }
       } else {
-        setCurrentNonEvmFromAddress(null); // Clear if EVM or no asset selected
+        setCurrentNonEvmFromAddress(null); // Clear if EVM, THORChain, or no asset selected
       }
     };
-    if (selectedFromAssetSymbol) {
-      fetchNonEvmAddr();
+
+    if (selectedFromAssetSymbol && allAssets.length > 0) { // Ensure allAssets is populated before trying to find details
+      fetchNonEvmAddrEffect();
     }
-  }, [selectedFromAssetSymbol, allAssets, walletAccounts]);
+  }, [selectedFromAssetSymbol, allAssets, userInfo]); // Added userInfo as a dependency
+
+  // Effect to set up non-EVM XChainJS clients
+  useEffect(() => {
+    const nonEvmClientSetupEffect = async () => {
+      const fromAssetDetails = allAssets.find(a => a.symbol === selectedFromAssetSymbol);
+
+      if (fromAssetDetails && !isEvmChain(fromAssetDetails.chain) && currentNonEvmFromAddress) {
+        console.log(`Setting up XChainJS client for: ${fromAssetDetails.chain}`);
+        try {
+          let client;
+          // Use network from ThorchainService instance (Mainnet/Testnet)
+          const network = thorchainService.network;
+          const clientParams = {
+            network,
+            phrase: undefined, // IMPORTANT: No phrase, signing is external via Particle
+            // TODO: Add other necessary params like data providers if XChainJS clients require them for read-only operations without a phrase
+          };
+
+          if (fromAssetDetails.chain === Chain.Bitcoin) {
+            client = new BtcClient({ ...defaultBtcParams, ...clientParams });
+          } else if (fromAssetDetails.chain === Chain.Cosmos) {
+            client = new CosmosClient({ ...defaultCosmosParams, ...clientParams /* chainId: 'cosmoshub-4' */ });
+          }
+          // Add other non-EVM clients (LTC, BCH, DOGE etc.) here as needed
+          // else if (fromAssetDetails.chain === Chain.Litecoin) { client = new LtcClient(...); }
+          // else if (fromAssetDetails.chain === Chain.BitcoinCash) { client = new BchClient(...); }
+          // else if (fromAssetDetails.chain === Chain.Dogecoin) { client = new DogeClient(...); }
+
+          if (client) {
+            thorchainService.setXChainClient(fromAssetDetails.chain, client);
+            console.log(`XChainJS client for ${fromAssetDetails.chain} set on ThorchainService.`);
+          } else {
+            console.warn(`No XChainJS client logic implemented for ${fromAssetDetails.chain} in UI yet.`);
+            // Optionally clear any stale client for this chain from thorchainService if one was set previously
+            // thorchainService.removeXChainClient(fromAssetDetails.chain); // Requires removeXChainClient method in service
+          }
+        } catch (e: any) {
+          console.error(`Failed to initialize XChainJS client for ${fromAssetDetails.chain}:`, e);
+          setError(`Failed to setup client for ${fromAssetDetails.chain}: ${e.message}`);
+        }
+      }
+    };
+
+    if (selectedFromAssetSymbol && currentNonEvmFromAddress && allAssets.length > 0) {
+      nonEvmClientSetupEffect();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedFromAssetSymbol, currentNonEvmFromAddress, allAssets, thorchainService]); // thorchainService added as it's used
 
 
   useEffect(() => {
@@ -337,88 +394,61 @@ const DexPage: React.FC = () => {
 
     try {
       let txHash: string | null = null;
+      const executeSwapOutcome = await thorchainService.executeSwap(quote, sourceAddress, finalDestinationAddress);
 
-      if (isEvmChain(fromAssetDetails.chain)) {
-        // EVM to Any swap (ThorchainService handles this)
-        txHash = await thorchainService.executeSwap(quote, sourceAddress, finalDestinationAddress);
-      } else {
-        // Non-EVM to Any swap (manual signing flow using Particle placeholders)
-        console.log(`Initiating non-EVM swap from ${fromAssetDetails.chain}`);
+      if (typeof executeSwapOutcome === 'string') {
+        // EVM transaction, hash is directly returned
+        txHash = executeSwapOutcome;
+      } else if (executeSwapOutcome && typeof executeSwapOutcome === 'object' && executeSwapOutcome.unsignedTxData) {
+        // Non-EVM transaction, need to sign and broadcast
+        const { unsignedTxData, chain: constructedChain } = executeSwapOutcome;
+        if (constructedChain !== fromAssetDetails.chain) {
+          throw new Error("Chain mismatch between quote and constructed transaction.");
+        }
 
-        // Step 1: Construct unsigned transaction (highly chain-specific and simplified here)
-        // This would involve using XChainJS utilities to build the transaction structure.
-        // For Bitcoin: determine UTXOs, build tx to quote.inboundAddress with memo.
-        // For Cosmos: build MsgSend to quote.inboundAddress with memo.
-        // This is a MAJOR simplification. Real implementation needs robust tx construction.
-        let unsignedTxData: any;
-        if (fromAssetDetails.chain === Chain.Bitcoin) {
-          // Placeholder: In reality, you'd build a PSBT or raw tx hex.
-          // This would need: UTXOs, fee rate, recipient (quote.inboundAddress), amount, memo.
-          // Example using a hypothetical XChainJS method that prepares tx data without signing:
-          // const btcClient = new BtcClient({ network: XChainNetwork.Mainnet /* or Testnet */ });
-          // const txPayload = btcClient.prepareTx({
-          //    sender: sourceAddress, // from currentNonEvmFromAddress
-          //    recipient: quote.inboundAddress,
-          //    amount: baseAmount(quote.inputAmountCryptoPrecision, fromAssetDetails.decimals),
-          //    memo: quote.memo,
-          //    feeRate: await btcClient.getFeeRates().then(rates => rates.fast), // example fee rate
-          // });
-          // unsignedTxData = txPayload.toHex(); // Or whatever format signNonEvmTransaction expects for BTC
-          unsignedTxData = {
-            type: "BTC_TRANSFER",
-            from: sourceAddress,
-            to: quote.inboundAddress,
-            amount: quote.inputAmountCryptoPrecision, // In satoshis
-            memo: quote.memo,
-            // This would need to be a PSBT hex or raw tx hex for actual signing
-          };
-          console.log("Placeholder unsigned BTC tx data:", unsignedTxData);
-        } else if (fromAssetDetails.chain === Chain.Cosmos) {
-          // Placeholder for Cosmos StdSignDoc
-          unsignedTxData = {
-            chain_id: "cosmoshub-4", // Example, needs to be dynamic
-            account_number: "0", // Needs to be fetched
-            sequence: "0", // Needs to be fetched
-            fee: { amount: [{ denom: "uatom", amount: "5000" }], gas: "200000" },
-            msgs: [{
-              type: "cosmos-sdk/MsgSend",
-              value: {
-                from_address: sourceAddress,
-                to_address: quote.inboundAddress, // THORChain inbound address for Cosmos
-                amount: [{ denom: "uatom", amount: quote.inputAmountCryptoPrecision }] // Amount in base units
-              }
-            }],
-            memo: quote.memo
-          };
-           console.log("Placeholder unsigned Cosmos tx data:", unsignedTxData);
+        console.log(`Constructed unsigned ${constructedChain} tx data:`, unsignedTxData);
+        setTransactionStatus({ status: 'user_signing', message: `Please sign the ${constructedChain} transaction in your wallet...` });
+
+        // Determine the actual data to sign based on type
+        let dataToSign;
+        if (unsignedTxData.type === 'psbt' && unsignedTxData.psbtHex) {
+            dataToSign = unsignedTxData.psbtHex;
+        } else if (unsignedTxData.type === 'cosmos-signdoc' && unsignedTxData.signDoc) {
+            dataToSign = unsignedTxData.signDoc;
         } else {
-          throw new Error(`Unsupported non-EVM chain for direct signing: ${fromAssetDetails.chain}`);
+            throw new Error(`Unknown unsigned transaction data type: ${unsignedTxData.type}`);
         }
 
-        // Step 2: Sign with Particle (using placeholder function)
-        const signedTxData = await signNonEvmTransaction(fromAssetDetails.chain, unsignedTxData, sourceAddress);
+        const signedTxData = await signNonEvmTransaction(constructedChain, dataToSign, sourceAddress);
         if (!signedTxData) {
-          throw new Error("Failed to sign non-EVM transaction via Particle.");
+          throw new Error(`Failed to sign ${constructedChain} transaction via Particle. User might have rejected or an error occurred.`);
         }
-        console.log(`Signed non-EVM tx data for ${fromAssetDetails.chain}:`, signedTxData);
+        console.log(`Signed ${constructedChain} tx data:`, signedTxData);
+        setTransactionStatus({ status: 'broadcasting', message: `Broadcasting ${constructedChain} transaction...` });
 
-        // Step 3: Broadcast with Particle (using placeholder function)
-        txHash = await broadcastNonEvmTransaction(fromAssetDetails.chain, signedTxData);
+        txHash = await broadcastNonEvmTransaction(constructedChain, signedTxData);
         if (!txHash) {
-          throw new Error("Failed to broadcast non-EVM transaction via Particle.");
+          throw new Error(`Failed to broadcast ${constructedChain} transaction.`);
         }
+      } else {
+        throw new Error("Invalid response from executeSwap in ThorchainService.");
       }
 
       if (txHash) {
         setSwapTxHash(txHash);
+        setTransactionStatus({ status: 'submitted', message: `Transaction ${txHash} submitted. Polling status...` });
         pollTransactionStatus(txHash, fromAssetDetails.chain);
       } else {
         setError("Transaction hash not received after execution attempt.");
+        setTransactionStatus(null);
       }
     } catch (e: any) {
       console.error("Error executing swap:", e);
-      setError(e.message || "An unknown error occurred during the swap.");
+      const errorMessage = e.message || "An unknown error occurred during the swap.";
+      setError(errorMessage);
+      setTransactionStatus({ status: 'error', message: errorMessage });
       if (e.message && e.message.includes("Approval required")) {
+        // Keep the specific error message for approval
         setError(e.message + " Please wait for approval and try swapping again, or approve manually if tx hash provided.");
       }
     } finally {
@@ -542,33 +572,61 @@ const DexPage: React.FC = () => {
         </div>
       )}
 
-      {/* ZetaChain Section (can remain largely unchanged) */}
+      {/* ZetaChain Section */}
       {userInfo && walletAccounts && walletAccounts.length > 0 && (
         <div className="mt-6 p-4 border rounded-lg shadow-md">
-          <h2 className="text-xl font-semibold mb-3">ZetaChain ZRC20 Assets</h2>
-          <button onClick={handleFetchZetaAssetsForDisplay} disabled={isFetchingZetaCoins || !zetaChainService.isInitialized()} className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded disabled:opacity-50 mb-2">
-            {isFetchingZetaCoins ? 'Refreshing ZRC20s...' : 'Refresh ZRC20 List'}
-          </button>
-          {!zetaChainService.isInitialized() && <p className="text-sm text-yellow-600">ZetaChain client not ready.</p>}
-          {zetaError && <p className="mt-2 text-red-500">ZetaChain Error: {zetaError}</p>}
-          {zetaAssetsForDisplay.length > 0 ? (
-            <div className="mt-3">
-              <h4 className="font-medium">Available ZRC20s on ZetaChain:</h4>
-              <ul className="list-disc list-inside text-sm max-h-48 overflow-y-auto bg-gray-50 p-2 rounded">
-                {zetaAssetsForDisplay.map((asset) => (<li key={getAssetKey(asset)}>{asset.name || asset.ticker} ({asset.symbol}) - ZRC20: <code className="text-xs">{asset.contractAddress}</code></li>))}
-              </ul>
-            </div>
-          ) : (<p className="text-sm text-gray-500">No ZRC20 assets loaded.</p>)}
+          <h2 className="text-xl font-semibold mb-3">ZetaChain Information</h2>
+          {!zetaChainService.isInitialized() && (
+            <p className="text-sm text-yellow-600">
+              ZetaChain client not initialized. Ensure your EVM wallet is connected.
+              {zetaError && <span className="text-red-500 block mt-1">Initialization Error: {zetaError}</span>}
+            </p>
+          )}
+          {zetaChainService.isInitialized() && (
+            <>
+              <button
+                onClick={handleFetchZetaAssetsForDisplay}
+                disabled={isFetchingZetaCoins}
+                className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded disabled:opacity-50 mb-2"
+              >
+                {isFetchingZetaCoins ? 'Refreshing ZRC20s...' : 'Refresh ZRC20 List'}
+              </button>
+              {zetaError && <p className="mt-2 text-red-500">ZetaChain Error: {zetaError}</p>}
+              {zetaAssetsForDisplay.length > 0 ? (
+                <div className="mt-3">
+                  <h4 className="font-medium">Available ZRC20s on ZetaChain:</h4>
+                  <ul className="list-disc list-inside text-sm max-h-48 overflow-y-auto bg-gray-50 p-2 rounded">
+                    {zetaAssetsForDisplay.map((asset) => (
+                      <li key={getAssetKey(asset)}>
+                        {asset.name || asset.ticker} ({asset.symbol}) - ZRC20: <code className="text-xs">{asset.contractAddress}</code>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                !isFetchingZetaCoins && <p className="text-sm text-gray-500">No ZRC20 assets loaded or found.</p>
+              )}
+            </>
+          )}
+          {/* TODO: Add UI for ZetaChain deposit and ZRC20 swap if prioritized */}
+          {/* Example:
+            <button onClick={handleZetaDeposit} className="ml-2 bg-blue-500 text-white p-2 rounded">Deposit ETH to Zeta</button>
+            <button onClick={handleZetaSwap} className="ml-2 bg-green-500 text-white p-2 rounded">Swap ZRC20s on Zeta</button>
+          */}
         </div>
       )}
 
-      {/* Fallback messages (can remain largely unchanged) */}
-      {!zetaChainService.isInitialized() && userInfo && walletAccounts && walletAccounts.length > 0 && ( <div className="mt-6 p-4 border rounded-lg shadow-md bg-yellow-50"><p className="text-yellow-700">ZetaChain client not initialized.</p>{zetaError && <p className="mt-1 text-red-600">Last attempt error: {zetaError}</p>}</div>)}
-      {(!userInfo || (!walletAccounts && !currentNonEvmFromAddress)) && (<div className="my-4 p-4 border rounded bg-gray-50">{isLoadingAuth ? <p>Checking auth...</p> : !userInfo ? <p>Please log in.</p> : <p>Please connect wallet.</p>}</div>)}
+      {/* Fallback messages */}
+      {(!userInfo || (!walletAccounts && !currentNonEvmFromAddress)) && (
+          <div className="my-4 p-4 border rounded bg-gray-50">
+            {isLoadingAuth ? <p>Checking auth...</p> : !userInfo ? <p>Please log in to use the DEX.</p> : <p>Please connect a wallet to proceed.</p>}
+          </div>
+      )}
 
-      <button className="bg-purple-600 text-white px-6 py-3 rounded-lg mt-4" disabled={isLoadingAuth || !userInfo || (!walletAccounts && !currentNonEvmFromAddress) } onClick={() => console.log("CTA clicked")}>
+      {/* CTA Button remains, could be used for other primary actions or removed if swap is the main focus */}
+      {/* <button className="bg-purple-600 text-white px-6 py-3 rounded-lg mt-4" disabled={isLoadingAuth || !userInfo || (!walletAccounts && !currentNonEvmFromAddress) } onClick={() => console.log("CTA clicked")}>
         {ctaText}
-      </button>
+      </button> */}
     </div>
   );
 };

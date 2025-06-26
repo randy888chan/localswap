@@ -152,7 +152,23 @@
 *   **Task: Comprehensive Testing (Conceptual Outline & Initial Unit Tests).**
     *   [x] Review existing unit tests for services.
     *   [x] Add unit test outline for `ThorchainService.checkAndRequestApproval`.
-    *   [ ] Develop further unit tests for `ThorchainService` and `ZetaChainService` critical functions.
+    *   [x] Develop further unit tests for `ThorchainService` (including non-EVM `executeSwap` path) and `ZetaChainService` (quote, ZRC20 swap, deposit).
     *   [ ] Develop unit tests for UI components (`Header.tsx`, `DexPage.tsx`).
-    *   [ ] Define and (conceptually) prepare for integration tests (Particle Auth -> Service flows).
+    *   [x] Define and (conceptually) prepare for integration tests (Particle Auth -> Service flows, Thorchain EVM & Non-EVM swaps, ZetaChain operations). *Actual execution pending manual testing.*
     *   [ ] Define and (conceptually) prepare for E2E tests (login, P2P, swap flows).
+
+### Integration Test Cases (Conceptual - Requires Manual Execution):
+
+*   **Thorchain Swaps:**
+    *   [ ] EVM (ETH) to EVM (ERC20 on ETH)
+    *   [ ] Bitcoin (L1) to EVM (ETH) - *Depends on full Particle non-EVM signing for PSBTs*
+    *   [ ] EVM (ETH) to Bitcoin (L1)
+    *   [ ] Cosmos (ATOM) to EVM (ETH) - *Depends on full Particle non-EVM signing for Cosmos SignDoc*
+*   **ZetaChain Operations:**
+    *   [ ] List ZRC20 Assets
+    *   [ ] Deposit EVM asset (e.g., ETH) to ZetaChain (becomes ZRC20)
+    *   [ ] Swap between ZRC20s on ZetaChain (e.g., ZRC20-ETH to ZRC20-BTC) - *Requires DEX router info & UI*
+*   **Particle Network:**
+    *   [ ] Login/Logout with various methods.
+    *   [ ] Connect/Disconnect EVM wallets.
+    *   [ ] Connect/Disconnect non-EVM wallets (Bitcoin, Cosmos) and verify address retrieval.
