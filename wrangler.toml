@@ -4,52 +4,74 @@ main = "src/server.ts"
 usage_model = "bundled"
 
 kv_namespaces = [
-  { binding = "TX_QUEUE", id = "<QUEUE_NAMESPACE_ID>" },
+  # { binding = "TX_QUEUE", id = "<QUEUE_NAMESPACE_ID>" }, # REVIEW: Believed to be for Rango, confirm if still needed
   { binding = "P2P_OFFERS", id = "<P2P_OFFERS_ID>" },
-  { binding = "TRANSLATION_CACHE", id = "<TRANSLATION_CACHE_ID>" }
+  { binding = "TRANSLATION_CACHE", id = "<TRANSLATION_CACHE_ID>" },
+  { binding = "LANDING_CONTENT", id = "<LANDING_CONTENT_KV_ID>" } # Added for dynamic landing pages
 ]
 
 [ai]
 bindings = [
-  { name = "AI", type = "ai" }
+  { name = "AI", type = "ai" } # For LLM content generation
 ]
 
 [build]
-command = "npm run build && wrangler types"
+command = "npm run build:worker && wrangler types" # Assuming 'build:worker' script builds the Cloudflare worker(s)
 
 [vars]
-ENVIRONMENT = "production"
-LCS_API_KEY = "@lcs_api_key"
-KV_ENCRYPTION_KEY = "@kv_encryption_key"
-BTC_PRIVATE_KEY = "@btc_key::2"
-ETH_SIGNER_KEY = "@eth_signer::3"
-# RANGO_API_KEY = "@rango_prod_key" # Removed
-BTC_SIGNER_KEY = "@btc_signer_v2"
-ETH_SIGNER_KEY = "@eth_signer_v2"
+ENVIRONMENT = "production" # Default environment for local dev with `wrangler dev`
+
+# Secrets to be set in Cloudflare Dashboard (or via `wrangler secret put`)
+LCS_API_KEY = "@lcs_api_key" # LocalCoinSwap API Key
+KV_ENCRYPTION_KEY = "@kv_encryption_key" # Key for encrypting sensitive data in KV if any
+
+# REVIEW: These signer keys might be legacy if Particle handles all user signing.
+# If backend needs to sign transactions itself (e.g. for operational tasks), clarify purpose.
+BTC_PRIVATE_KEY = "@btc_key::2" # Legacy?
+ETH_SIGNER_KEY = "@eth_signer::3" # Legacy?
+BTC_SIGNER_KEY = "@btc_signer_v2" # Legacy?
+ETH_SIGNER_KEY_V2 = "@eth_signer_v2" # Renamed to avoid conflict if different from above, review
+
+# Particle Network Configuration (also set as NEXT_PUBLIC_ in Next.js env for client-side SDK)
+# These can also be passed to workers if worker needs to init Particle Admin/Server SDK.
 PARTICLE_PROJECT_ID = "@particle_project_id"
 PARTICLE_CLIENT_KEY = "@particle_client_key"
 PARTICLE_APP_ID = "@particle_app_id"
 
+# RANGO_API_KEY = "@rango_prod_key" # Removed
+
 # Rango-specific Durable Object binding removed.
-# [durable_objects]
-# bindings = [
-#   { name = "RANGO_QUEUE", class_name = "RangoQueueDO" }
+# Rango-specific migration removed.
+# Rango-specific analytics dataset removed.
+
+# [triggers]
+# crons = ["0 * * * *"]  # Hourly queue flush. REVIEW: If TX_QUEUE is removed, this cron is likely also not needed.
+
+[deployment] # This section is for wrangler deploy environments, distinct from [env.staging] etc.
+# environments = [ # This key is not standard wrangler.toml, perhaps for custom script?
+#   { name = "staging",   vars = { ENVIRONMENT = "staging" }},
+#   { name = "production",vars = { ENVIRONMENT = "production" }}
 # ]
 
-# Rango-specific migration removed. If new DOs are added, new migrations will be needed.
-# [[migrations]]
-# tag = "v1"
-# new_classes = ["RangoQueueDO"]
+# Staging environment configuration
+[env.staging]
+name = "dex-aggregator-staging" # Worker name for staging
+route = "staging.swap.example.com/*" # Replace with actual staging domain
+# vars specific to staging can be added here
+# Example: vars = { ENVIRONMENT = "staging", LCS_API_KEY = "@lcs_api_key_staging" }
 
-# Rango-specific analytics dataset removed.
-# [analytics_engine_datasets]
-# RANGO_METRICS = { dataset = "rango_metrics" }
+# Production environment configuration
+[env.production]
+name = "dex-aggregator-production" # Worker name for production
+route = "swap.example.com/*" # Replace with actual production domain
+# vars specific to production
+# Example: vars = { ENVIRONMENT = "production", LCS_API_KEY = "@lcs_api_key_prod" }
+# Ensure production secrets for Particle, LCS etc. are correctly referenced or set.
 
-[triggers]
-crons = ["0 * * * *"]  # Hourly queue flush. Review if this cron is still needed without Rango queue.
+# Cloudflare Pages deployment for the Next.js app is configured separately in Cloudflare dashboard or via Pages-specific actions.
+# This wrangler.toml primarily configures the Cloudflare Worker(s).
 
-[deployment]
-environments = [
+# Unsafe bindings example, keep if specifically needed and understood
   { name = "staging",   vars = { ENVIRONMENT = "staging" }},
   { name = "production",vars = { ENVIRONMENT = "production" }}
 ]

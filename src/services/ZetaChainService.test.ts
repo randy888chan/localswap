@@ -7,43 +7,96 @@ import { Chain, formatUnits, parseUnits } from '@xchainjs/xchain-util';
 import { SimpleAsset } from './ThorchainService';
 
 // Mock @zetachain/toolkit/client
-const mockZetaChainClientInstance = {
-  getForeignCoins: vi.fn(),
-  getQuote: vi.fn(),
-  approveToken: vi.fn(),
-  send: vi.fn(),
-  evmDeposit: vi.fn(),
-  trackCCTX: vi.fn(),
-  getFees: vi.fn(),
-  // Add any other methods that might be called during initialization or use
-};
+let mockZetaChainClientInstance: any;
+
 vi.mock('@zetachain/toolkit/client', () => ({
-  ZetaChainClient: vi.fn(() => mockZetaChainClientInstance),
+  ZetaChainClient: vi.fn().mockImplementation((params) => {
+    // Allow dynamic mocking of methods per test suite or test
+    mockZetaChainClientInstance = {
+      getForeignCoins: vi.fn(),
+      getQuote: vi.fn(),
+      approveToken: vi.fn(),
+      send: vi.fn(),
+      evmDeposit: vi.fn(),
+      trackCCTX: vi.fn(),
+      getFees: vi.fn(),
+      getZRC20GasToken: vi.fn(), // Added for callRemoteContractWithMessage
+      // Store params for assertion
+      _constructorParams: params,
+      // Add any other methods that might be called
+    };
+    return mockZetaChainClientInstance;
+  }),
 }));
 
 const mockSigner = {
-  provider: {}, // Mock provider object
+  provider: { getNetwork: async () => ({ chainId: 5 }) }, // Mock provider with getNetwork
   getAddress: async () => 'mockSignerAddress',
 } as unknown as Signer;
 
 describe('ZetaChainService', () => {
   let service: ZetaChainService;
 
-  beforeEach(() => {
+  beforeEach(async () => { // Make beforeEach async if initialization is async
     vi.clearAllMocks();
     service = new ZetaChainService();
-    // Default successful initialization for most tests
-    (ZetaChainClient as any).mockImplementation(() => {
-        mockZetaChainClientInstance.getForeignCoins.mockResolvedValue([]); // Default empty
-        mockZetaChainClientInstance.getQuote.mockResolvedValue({ amountOut: '0' }); // Default minimal quote
-        return mockZetaChainClientInstance;
-    });
-    service.initializeClient(mockSigner); // Initialize client for each test
+    // Default successful initialization can be done here if common
+    // Or within specific describe blocks if behavior needs to vary
+    // For instance, setting up default resolves for mocked client methods
+    process.env.NEXT_PUBLIC_ZETACHAIN_NETWORK = 'testnet'; // Default to testnet for tests
+    await service.initializeClient(mockSigner);
+
+    // Setup default resolves for methods that are frequently called successfully
+    if (mockZetaChainClientInstance) {
+        mockZetaChainClientInstance.getForeignCoins.mockResolvedValue([]);
+        mockZetaChainClientInstance.getQuote.mockResolvedValue({ amountOut: '0' });
+        mockZetaChainClientInstance.getZRC20GasToken.mockResolvedValue({
+            zrc20_contract_address: '0xWZetaTestnet',
+            decimals: 18
+        });
+        mockZetaChainClientInstance.approveToken.mockResolvedValue({ hash: 'mockApproveTxHash', wait: async () => ({ status: 1 }) });
+        mockZetaChainClientInstance.send.mockResolvedValue({ hash: 'mockSendTxHash' });
+    }
   });
 
-  it('should initialize ZetaChainClient successfully', async () => {
-    expect(ZetaChainClient).toHaveBeenCalled();
-    expect(service.isInitialized()).toBe(true);
+  describe('initializeClient', () => {
+    it('should initialize ZetaChainClient successfully and pass correct api param for testnet', async () => {
+      process.env.NEXT_PUBLIC_ZETACHAIN_NETWORK = 'testnet';
+      const localService = new ZetaChainService();
+      await localService.initializeClient(mockSigner);
+      expect(ZetaChainClient).toHaveBeenCalled();
+      // Access the stored params via the mock itself if the mock is set up to store them
+      // This requires ZetaChainClient mock to capture its constructor arguments
+      const constructorArgs = (ZetaChainClient as any).mock.calls[0][0];
+      expect(constructorArgs.api).toBe('api-testnet');
+      expect(localService.isInitialized()).toBe(true);
+    });
+
+    it('should initialize ZetaChainClient successfully and pass correct api param for mainnet', async () => {
+      process.env.NEXT_PUBLIC_ZETACHAIN_NETWORK = 'mainnet';
+      const localService = new ZetaChainService();
+      await localService.initializeClient(mockSigner);
+      expect(ZetaChainClient).toHaveBeenCalled();
+      const constructorArgs = (ZetaChainClient as any).mock.calls[0][0];
+      expect(constructorArgs.api).toBe('api-mainnet');
+      expect(localService.isInitialized()).toBe(true);
+    });
+
+    it('should fail to initialize if signer has no provider', async () => {
+      const signerNoProvider = { getAddress: async () => 'test' } as Signer;
+      // Reset NEXT_PUBLIC_ZETACHAIN_NETWORK if its value matters for this specific test path
+      // or ensure it's set to a default that doesn't interfere.
+      process.env.NEXT_PUBLIC_ZETACHAIN_NETWORK = 'testnet';
+      const localService = new ZetaChainService();
+      const success = await localService.initializeClient(signerNoProvider);
+      expect(success).toBe(false);
+      expect(localService.isInitialized()).toBe(false);
+    });
+  });
+
+  // Ensure NEXT_PUBLIC_ZETACHAIN_NETWORK is reset or managed if tests depend on its specific values
+  afterEach(() => {
+    delete process.env.NEXT_PUBLIC_ZETACHAIN_NETWORK;
   });
 
   it('should fail to initialize if signer has no provider', async () => {
@@ -75,10 +128,17 @@ describe('ZetaChainService', () => {
       }));
       expect(assets[1].ticker).toBe('MATIC');
     });
+
+    it('should return empty array if getForeignCoins fails', async () => {
+        mockZetaChainClientInstance.getForeignCoins.mockRejectedValue(new Error("API Error"));
+        const assets = await service.listSupportedForeignCoins();
+        expect(assets).toEqual([]);
+        expect(console.error).toHaveBeenCalledWith("Error fetching ZetaChain foreign coins:", expect.any(Error));
+      });
   });
 
   describe('depositAssetToZetaChain', () => {
-    it('should call client.evmDeposit with correct parameters', async () => {
+    it('should call client.evmDeposit with correct parameters for ERC20 deposit', async () => {
       mockZetaChainClientInstance.evmDeposit.mockResolvedValue({ hash: 'mockDepositTxHash' });
       const txHash = await service.depositAssetToZetaChain('1.0', '0xERC20Address', '0xZetaReceiver', 5);
       expect(mockZetaChainClientInstance.evmDeposit).toHaveBeenCalledWith(expect.objectContaining({
@@ -87,6 +147,29 @@ describe('ZetaChainService', () => {
         receiver: '0xZetaReceiver',
       }));
       expect(txHash).toBe('mockDepositTxHash');
+    });
+
+    it('should call client.evmDeposit with erc20 undefined for native asset deposit', async () => {
+        mockZetaChainClientInstance.evmDeposit.mockResolvedValue({ hash: 'mockNativeDepositTxHash' });
+        const txHash = await service.depositAssetToZetaChain('0.5', undefined, '0xZetaReceiver', 5);
+        expect(mockZetaChainClientInstance.evmDeposit).toHaveBeenCalledWith(expect.objectContaining({
+          amount: '0.5',
+          erc20: undefined,
+          receiver: '0xZetaReceiver',
+        }));
+        expect(txHash).toBe('mockNativeDepositTxHash');
+      });
+
+    it('should throw error if service not initialized', async () => {
+        const uninitializedService = new ZetaChainService();
+        await expect(uninitializedService.depositAssetToZetaChain('1.0', '0xERC20', '0xReceiver', 5))
+            .rejects.toThrow("ZetaChainService not initialized or signer not available.");
+    });
+
+    it('should throw error if client.evmDeposit fails', async () => {
+        mockZetaChainClientInstance.evmDeposit.mockRejectedValue(new Error("EvmDeposit failed"));
+        await expect(service.depositAssetToZetaChain('1.0', '0xERC20', '0xReceiver', 5))
+            .rejects.toThrow("ZetaChain deposit failed: EvmDeposit failed");
     });
   });
 
