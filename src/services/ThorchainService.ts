@@ -111,49 +111,55 @@ export class ThorchainService {
     if (simpleAsset?.decimals !== undefined) {
         return simpleAsset.decimals;
     }
-    // Fallback logic if not provided in SimpleAsset - this needs to be robust
-    // For THORChain's internal math, it often uses 8 decimals.
-    // However, for displaying to user or constructing client-side txs, true decimals are needed.
     // Prioritize decimals from SimpleAsset if provided, as it might come from a reliable token list.
     if (simpleAsset?.decimals !== undefined) {
         return simpleAsset.decimals;
     }
-    // Fallback logic for known chains and asset types
-    // THORChain's internal representation for amounts is often 1e8, but assets have their own native decimals.
+
+    // Predefined list for common ERC20 tokens (symbol needs to be exact as XChainJS parses it)
+    // Key: XChainJS asset symbol string (e.g., "ETH.USDT-0xdAC17F958D2ee523a2206206994597C13D831ec7")
+    const commonErc20Decimals: Record<string, number> = {
+        "ETH.USDT-0xdAC17F958D2ee523a2206206994597C13D831ec7": 6, // USDT on Ethereum
+        "ETH.USDC-0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48": 6, // USDC on Ethereum
+        "BSC.BUSD-0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56": 18, // BUSD on BSC (often 18)
+        "BSC.USDT-0x55d398326f99059fF775485246999027B3197955": 18, // USDT on BSC (often 18, verify)
+        // Add more common tokens for other EVM chains (AVAX, etc.) if needed
+    };
+
+    if (commonErc20Decimals[asset.symbol]) {
+        return commonErc20Decimals[asset.symbol];
+    }
+
+    // Fallback logic for native assets and THORChain's internal representation
     switch (asset.chain) {
         case Chain.Bitcoin:
         case Chain.BitcoinCash:
         case Chain.Litecoin:
         case Chain.Dogecoin:
-            return 8;
+            return 8; // Native UTXO precision
         case Chain.Ethereum:
         case Chain.Avalanche:
         case Chain.BinanceSmartChain:
             // For native gas assets on EVM chains
-            if (asset.symbol === 'ETH' && asset.chain === Chain.Ethereum) return 18;
-            if (asset.symbol === 'AVAX' && asset.chain === Chain.Avalanche) return 18;
-            if (asset.symbol === 'BNB' && asset.chain === Chain.BinanceSmartChain) return 18;
+            if (asset.symbol === `${asset.chain}.${asset.chain}`) return 18; // e.g., ETH.ETH, AVAX.AVAX, BSC.BNB
 
-            // For ERC20s, decimals MUST be known via SimpleAsset.
-            // If simpleAsset.decimals is undefined here for a token, it's an issue.
-            if (asset.symbol.includes('-')) { // Basic check for token (e.g., ETH.USDT-0x...)
-                 const errorMsg = `Decimals for token ${asset.symbol} on ${asset.chain} must be provided via SimpleAsset.decimals. Cannot guess.`;
-                 console.error(errorMsg);
-                 throw new Error(errorMsg);
+            // For other ERC20s not in the predefined list:
+            if (asset.symbol.includes('-')) { // Basic check for token (e.g., ETH.XYZ-0x...)
+                 const errorMsg = `Decimals for token ${asset.symbol} on ${asset.chain} are not predefined and not provided in SimpleAsset. Cannot reliably determine.`;
+                 console.warn(errorMsg); // Warn instead of throwing immediately to allow getAvailableAssets to potentially filter
+                 return undefined; // Indicate that decimals could not be determined
             }
-            // If it's not a token (e.g. native asset of a chain we haven't listed above but is EVM compatible)
+            // If it's not a token and not the native gas asset (e.g. some other native asset on an EVM chain if that exists)
             console.warn(`Decimals for native-like asset ${asset.symbol} on EVM chain ${asset.chain} not explicitly defined, defaulting to 18. This might be incorrect if it's not the primary gas token.`);
             return 18; // Default for other native EVM gas assets.
-        case Chain.Cosmos: // ATOM
-            return 6;
+        case Chain.Cosmos: // ATOM and other Cosmos SDK based chains
+            return 6; // Common for ATOM, but other Cosmos tokens can vary.
         case Chain.THORChain: // RUNE
-             // Native RUNE on THORChain mainnet/testnet has 8 decimals.
-             // ERC20 RUNE or BEP2 RUNE had different decimals (e.g., 18 or 8).
-             // Assuming native THOR.RUNE here.
+            // Native RUNE on THORChain mainnet/testnet has 8 decimals.
             return 8;
         default:
-            console.warn(`Decimals for ${asset.chain}.${asset.symbol} not explicitly defined, defaulting to 8. This might be incorrect.`);
-            return 8; // THORChain's common internal precision, but not necessarily asset's native decimal.
+            console.warn(`Decimals for ${asset.chain}.${asset.symbol} not explicitly defined, attempting to default to 8 (THORChain common precision). This might be incorrect for the asset's native precision.`);
+            return 8; // Fallback to THORChain's common internal precision, but risky.
     }
 }
 

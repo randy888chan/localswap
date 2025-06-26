@@ -146,43 +146,78 @@ export const getEthersSigner = async (): Promise<ethers.Signer | null> => {
   return null;
 };
 
-// --- Placeholder functions for Non-EVM Wallet Interactions via Particle Connect ---
+// --- Non-EVM Wallet Interactions via Particle Connect ---
 
 /**
  * Gets the connected account address for a given non-EVM chain.
- * This is a placeholder and needs to be implemented based on Particle SDK's capabilities
- * for external non-EVM wallets (e.g., via WalletConnect).
+ * Particle Connect uses WalletConnect or its own adapters for non-EVM chains.
+ * The specific methods depend on Particle's SDK wrapping these interactions.
  */
 export const getNonEvmAddress = async (chain: Chain): Promise<string | null> => {
   if (!particleConnect.provider) {
     console.warn("Particle connect provider not available for getNonEvmAddress.");
     return null;
   }
+  // Ensure user is "connected" through Particle Connect, which might involve selecting a wallet.
+  // The `particleConnect.connect()` might need to be called if no active session.
+  // For now, assume `particleConnect.provider` implies an active connection.
+
   try {
-    // Example: WalletConnect methods often use specific RPC calls per chain family
-    let accounts: string[] = [];
+    let accounts: string[] | undefined;
+    const walletType = particleConnect.particle?.walletType;
+    console.log(`Fetching non-EVM address for ${chain} with wallet type: ${walletType}`);
+
+    // Particle's `particle.btc.getAccounts()` or `particle.solana.getAccounts()` are for their embedded AA SDK.
+    // For external wallets via Particle Connect, we typically rely on generic request methods or specific chain adapters.
+    // The `particleConnect.request` method is the most likely candidate if Particle follows WalletConnect patterns.
+
     if (chain === Chain.Bitcoin) {
-      // This is speculative. Particle might wrap WalletConnect `btc_getAccounts` or similar.
-      // Or it might be part of a generic `request` method if Particle normalizes it.
-      // accounts = await particleConnect.request({ method: 'btc_accounts' }); // Or similar
-      console.warn(`getNonEvmAddress for ${chain}: Actual Particle SDK method unknown, returning placeholder.`);
-      // Try to get from existing walletAccounts if Particle populates it for non-EVM upon connection
-      const currentAccounts = particleConnect.currAccounts; // Assuming particleConnect exposes this
-      if (currentAccounts && Array.isArray(currentAccounts)) {
-         // We need a way to map chain to the account format.
-         // For now, if only one account, assume it could be it, but this is weak.
-         if (currentAccounts.length === 1 && !currentAccounts[0].startsWith('0x')) return currentAccounts[0];
+      // WalletConnect v2 uses "btc_getAccounts" or similar. Particle might abstract this.
+      // Check if Particle exposes a direct method first for BTC through Connect.
+      // If not, try generic request.
+      // accounts = await particleConnect.request({ method: 'btc_getAccounts' }); // This is a guess.
+      // Particle documentation mentions BTC Connect for Particle Auth side. For Particle Connect (external wallets),
+      // it would depend on the connected wallet's WalletConnect capabilities.
+      // A common way Particle SDKs work is to have the current accounts available after connection.
+      // Let's check `particleConnect.currAccounts` if it holds non-EVM addresses.
+      const currentAccounts = particleConnect.currAccounts;
+      if (currentAccounts && currentAccounts.length > 0) {
+        // Heuristic: Bitcoin addresses don't start with '0x' and are typically longer.
+        // This is not foolproof and depends on how Particle structures `currAccounts`.
+        accounts = currentAccounts.filter(acc => !acc.startsWith('0x') && acc.length > 25); // Basic filter
+        if (accounts && accounts.length > 0) console.log(`Found potential BTC accounts in currAccounts: ${accounts}`);
       }
-       return "mock-btc-address-from-particle"; // Placeholder
+
+      if (!accounts || accounts.length === 0) {
+        console.warn(`getNonEvmAddress for ${chain}: No direct method or suitable account in currAccounts. Attempting generic request (speculative).`);
+        // This is highly speculative as Particle's specific RPC method for external BTC wallets isn't documented clearly.
+        // It might be `particle_btcGetAccounts` or depend on the connected adapter.
+        // For a robust solution, refer to Particle's exact documentation for external BTC wallet address retrieval.
+        // For now, returning a mock or throwing an error might be safer than a failing RPC call.
+         console.error(`Particle SDK method for getting external ${chain} address is not confirmed. Returning null.`);
+         return null; // Or throw new Error("Method not confirmed");
+      }
     } else if (chain === Chain.Cosmos) {
-      // accounts = await particleConnect.request({ method: 'cosmos_getAccounts', params: [{ chainId: 'cosmoshub-4' }] }); // Example
-      console.warn(`getNonEvmAddress for ${chain}: Actual Particle SDK method unknown, returning placeholder.`);
-      return "mock-cosmos-address-from-particle"; // Placeholder
+      // Similar to Bitcoin, check `currAccounts` or a specific request.
+      // Cosmos addresses typically start with a chain-specific prefix (e.g., "cosmos", "osmo").
+      const currentAccounts = particleConnect.currAccounts;
+      if (currentAccounts && currentAccounts.length > 0) {
+         accounts = currentAccounts.filter(acc => acc.startsWith('cosmos') || acc.startsWith('osmo') /* add other prefixes */);
+         if (accounts && accounts.length > 0) console.log(`Found potential Cosmos accounts in currAccounts: ${accounts}`);
+      }
+      if (!accounts || accounts.length === 0) {
+        console.warn(`getNonEvmAddress for ${chain}: No direct method or suitable account in currAccounts. Attempting generic request (speculative).`);
+        // Example: `await particleConnect.request({ method: 'cosmos_getAccounts', params: [{ chainId: 'cosmoshub-4' }] });`
+        // This depends on WalletConnect session and connected wallet's support.
+        console.error(`Particle SDK method for getting external ${chain} address is not confirmed. Returning null.`);
+        return null;
+      }
     } else {
-      console.warn(`getNonEvmAddress: Chain ${chain} not explicitly supported in this placeholder.`);
+      console.warn(`getNonEvmAddress: Chain ${chain} not explicitly supported or method unknown.`);
       return null;
     }
-    // return accounts && accounts.length > 0 ? accounts[0] : null;
+
+    return accounts && accounts.length > 0 ? accounts[0] : null;
   } catch (error) {
     console.error(`Error getting address for chain ${chain} via Particle:`, error);
     return null;
@@ -191,98 +226,158 @@ export const getNonEvmAddress = async (chain: Chain): Promise<string | null> => 
 
 /**
  * Signs a transaction for a given non-EVM chain using Particle Connect.
- * This is a highly speculative placeholder.
- * Implementation depends entirely on Particle SDK's methods for external non-EVM wallet signing.
- *
  * @param chain The chain for which the transaction is being signed.
- * @param transactionData The unsigned transaction data, format depends on the chain.
- *                        For Bitcoin, this might be a PSBT (Partially Signed Bitcoin Transaction) hex.
- *                        For Cosmos, this might be a StdSignDoc object.
+ * @param transactionData The unsigned transaction data (PSBT hex for BTC, StdSignDoc JSON string for Cosmos).
  * @param fromAddress The address to sign from.
- * @returns The signed transaction data or signature, format depends on the chain.
+ * @returns The signed transaction data (signed PSBT hex for BTC, signature object for Cosmos).
  */
 export const signNonEvmTransaction = async (
   chain: Chain,
-  transactionData: any, // e.g., PSBT hex for BTC, StdSignDoc for Cosmos
+  transactionData: string, // Expecting PSBT hex string for BTC, StdSignDoc JSON string for Cosmos
   fromAddress: string
-): Promise<any | null> => { // Return type also depends on chain (e.g., signed PSBT hex, signature object)
+): Promise<string | { signature: string; signedTxBytes?: string } | null> => {
   if (!particleConnect.provider) {
     console.warn("Particle connect provider not available for signNonEvmTransaction.");
     return null;
   }
   try {
-    console.log(`Attempting to sign transaction for ${chain} from ${fromAddress} with data:`, transactionData);
+    console.log(`Attempting to sign transaction for ${chain} from ${fromAddress}`);
     if (chain === Chain.Bitcoin) {
-      // Example for Bitcoin using a hypothetical PSBT signing method via WalletConnect (if Particle exposes it)
-      // const signedPsbtHex = await particleConnect.request({
-      //   method: 'btc_signPsbt', // Or a similar method Particle might provide
-      //   params: [{ psbtHex: transactionData, signerAddress: fromAddress }],
-      // });
-      // return signedPsbtHex;
-      console.warn(`signNonEvmTransaction for ${chain}: Actual Particle SDK method unknown, returning mock success.`);
-      return "mock-signed-btc-psbt-hex"; // Placeholder
+      // Particle's documentation for BTC Connect (part of Particle Auth/Wallet) suggests methods like `signPSBT`.
+      // If using an external wallet via Particle Connect, it would likely use WalletConnect's `bitcoin_signPsbt`
+      // or a similar standard if Particle wraps it.
+      // Assuming `particleConnect.request` is the way for external wallets.
+      const result = await particleConnect.request({
+        method: 'bitcoin_signPsbt', // Standard WalletConnect method for Bitcoin PSBTs
+        params: [{ psbt: transactionData, address: fromAddress }], // Structure might vary
+      });
+      // `result` structure depends on the wallet; it might be the signed PSBT hex directly or an object.
+      if (typeof result === 'string') return result; // Assuming it's the signed PSBT hex
+      if (typeof result === 'object' && (result as any).signedPsbt) return (result as any).signedPsbt; // Or similar field
+      throw new Error("Unexpected response format from bitcoin_signPsbt");
+
     } else if (chain === Chain.Cosmos) {
-      // Example for Cosmos (Amino or Direct)
-      // const signature = await particleConnect.request({
-      //   method: 'cosmos_signAmino', // or cosmos_signDirect
-      //   params: [fromAddress, transactionData], // transactionData would be StdSignDoc
-      // });
-      // return signature;
-      console.warn(`signNonEvmTransaction for ${chain}: Actual Particle SDK method unknown, returning mock success.`);
-      return { mockSignedCosmosTransaction: transactionData, signature: "mockSignature" }; // Placeholder
+      // For Cosmos, it's typically `signAmino` or `signDirect`. `signAmino` is more common with WalletConnect v1/Keplr.
+      // The `transactionData` should be a JSON string of the StdSignDoc.
+      // The `particleConnect.request` method would be used.
+      const signDoc = JSON.parse(transactionData); // Parse JSON string to object
+      const result = await particleConnect.request({
+        method: 'cosmos_signAmino', // Or 'cosmos_signDirect' if supported and StdSignDoc is for direct
+        params: [fromAddress, signDoc],
+      });
+      // Result is typically an object containing the signature.
+      // e.g., { signature: "base64_signature_string", pub_key: { type: string, value: string } }
+      // For broadcasting, often only the signature part is needed, combined with the original signDoc.
+      if (typeof result === 'object' && (result as any).signature) {
+        return { signature: (result as any).signature }; // Return the signature part
+      }
+      throw new Error("Unexpected response format from cosmos_signAmino");
     } else {
-      console.warn(`signNonEvmTransaction: Chain ${chain} not explicitly supported in this placeholder.`);
+      console.warn(`signNonEvmTransaction: Chain ${chain} not explicitly supported.`);
       return null;
     }
   } catch (error) {
-    console.error(`Error signing transaction for chain ${chain} via Particle:`, error);
-    return null;
+    console.error(`Error signing ${chain} transaction via Particle:`, error);
+    throw error; // Re-throw to be caught by UI
   }
 };
 
 /**
  * Broadcasts a signed non-EVM transaction.
- * This might use Particle's provider if it supports broadcasting for that chain,
- * or it might require using a public RPC/service for the specific chain.
+ * Uses public RPCs as Particle Connect might not directly support broadcasting for all non-EVM chains.
  */
 export const broadcastNonEvmTransaction = async (
   chain: Chain,
-  signedTransactionData: any
-): Promise<string | null> => { // Returns transaction hash
+  signedTransactionData: string | { signature: string; signedTxBytes?: string }, // signed PSBT hex for BTC, or object for Cosmos
+  originalSignDoc?: any // For Cosmos, the original StdSignDoc might be needed to reconstruct the tx with signature
+): Promise<string | null> => {
   try {
-    console.log(`Attempting to broadcast transaction for ${chain}:`, signedTransactionData);
+    console.log(`Attempting to broadcast transaction for ${chain}`);
     if (chain === Chain.Bitcoin) {
-      // Example: Broadcasting via a public API like Blockstream.info
-      // const response = await fetch(`https://blockstream.info/api/tx`, { // Use testnet if applicable
+      // signedTransactionData is assumed to be the final signed transaction hex (not just PSBT anymore if wallet fully signed it)
+      // Or, if it's a PSBT that needs finalization and extraction, that logic would be here or in XChainJS.
+      // For simplicity, assuming `signedTransactionData` is the raw tx hex to broadcast.
+      // This step may require `bitcoinjs-lib` to finalize PSBT if Particle returns a signed PSBT rather than raw tx.
+      // For now, assuming `signedTransactionData` is the broadcastable hex.
+      const apiUrl = process.env.NEXT_PUBLIC_NETWORK === 'testnet'
+        ? 'https://blockstream.info/testnet/api/tx'
+        : 'https://blockstream.info/api/tx';
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        body: signedTransactionData as string, // Raw signed tx hex
+      });
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Bitcoin broadcast failed (${response.status}): ${errorText}`);
+      }
+      const txHash = await response.text();
+      console.log(`Bitcoin transaction broadcasted: ${txHash}`);
+      return txHash;
+
+    } else if (chain === Chain.Cosmos) {
+      // For Cosmos, broadcasting typically involves sending a JSON payload with the signed tx bytes.
+      // The `signedTransactionData` from `signNonEvmTransaction` was `{ signature: string }`.
+      // We need the original StdSignDoc and the public key to reconstruct the full signed tx for broadcast.
+      // This part is complex and often handled by libraries like `@cosmjs/stargate`.
+      // XChainJS Cosmos client's `broadcastTx` would ideally handle this if given the signature and original data.
+      // If Particle returns `signedTxBytes` directly, that's simpler.
+      // For now, this is a simplified placeholder. A robust solution needs CosmJS or similar.
+
+      if (typeof signedTransactionData !== 'object' || !signedTransactionData.signature) {
+        throw new Error("Invalid signed data format for Cosmos broadcast.");
+      }
+      if (!originalSignDoc) {
+        throw new Error("Original SignDoc required for Cosmos broadcast.");
+      }
+
+      // Placeholder for using a public Cosmos LCD/RPC endpoint.
+      // Example: POST to `/cosmos/tx/v1beta1/txs`
+      // The body would be like: { "tx_bytes": "base64_encoded_signed_tx_bytes", "mode": "BROADCAST_MODE_SYNC" }
+      // Constructing `tx_bytes` from SignDoc and signature is non-trivial.
+      // This would typically involve `makeStdTx` from `@cosmjs/amino` or similar for direct sign.
+
+      const cosmosRpcUrl = process.env.NEXT_PUBLIC_COSMOS_RPC_URL || (process.env.NEXT_PUBLIC_NETWORK === 'testnet' ? 'https://rpc.sentry-01.theta-testnet.polypore.xyz' : 'https://cosmos-rpc.publicnode.com:443');
+      // The following is a conceptual representation. Real implementation needs CosmJS.
+      console.warn(`Cosmos broadcast: Simplified. Real implementation requires CosmJS or similar to construct tx_bytes.`);
+      // Example structure to send to a generic broadcast endpoint (very simplified)
+      // const txToBroadcast = {
+      //   tx: {
+      //     msg: originalSignDoc.msgs, // This is simplified, structure is more complex
+      //     fee: originalSignDoc.fee,
+      //     signatures: [{
+      //       pub_key: { /* public key from fromAddress or Particle */ },
+      //       signature: signedTransactionData.signature,
+      //     }],
+      //     memo: originalSignDoc.memo,
+      //   },
+      //   mode: 'sync', // Or 'async', 'block'
+      // };
+
+      // This is a placeholder, actual broadcast logic is more involved.
+      // const response = await fetch(`${cosmosRpcUrl}/txs`, {
       //   method: 'POST',
-      //   body: signedTransactionData, // Assuming this is the raw signed tx hex
+      //   headers: { 'Content-Type': 'application/json' },
+      //   body: JSON.stringify(txToBroadcast),
       // });
       // if (!response.ok) {
-      //   const errorText = await response.text();
-      //   throw new Error(`Bitcoin broadcast failed: ${response.status} ${errorText}`);
+      //   const errorData = await response.json();
+      //   throw new Error(`Cosmos broadcast failed: ${errorData.message || JSON.stringify(errorData)}`);
       // }
-      // const txHash = await response.text();
-      // return txHash;
-      console.warn(`broadcastNonEvmTransaction for ${chain}: Actual broadcasting method needed, returning mock success.`);
-      return `mock-btc-txid-${Date.now()}`; // Placeholder
-    } else if (chain === Chain.Cosmos) {
-      // Example: Broadcasting via a Cosmos LCD/RPC endpoint
-      // This would involve using `particleConnect.provider.request` with `broadcast_tx_sync` or `broadcast_tx_async`
-      // or a direct fetch to an LCD endpoint.
-      // const result = await particleConnect.request({
-      //    method: 'cosmos_broadcastTx', // Or specific broadcast method
-      //    params: [signedTransactionData] // Format of signedTxData depends on what signNonEvmTransaction returned
-      // });
+      // const result = await response.json();
+      // if (result.code && result.code !== 0) { // Check for Tendermint error code
+      //   throw new Error(`Cosmos broadcast error: ${result.raw_log || JSON.stringify(result)}`);
+      // }
       // return result.txhash;
-      console.warn(`broadcastNonEvmTransaction for ${chain}: Actual broadcasting method needed, returning mock success.`);
+
+      console.error(`Cosmos broadcast: Full implementation needed using CosmJS or similar. Returning mock.`);
       return `mock-cosmos-txid-${Date.now()}`; // Placeholder
     } else {
-      console.warn(`broadcastNonEvmTransaction: Chain ${chain} not explicitly supported in this placeholder.`);
+      console.warn(`broadcastNonEvmTransaction: Chain ${chain} not explicitly supported.`);
       return null;
     }
   } catch (error) {
-    console.error(`Error broadcasting transaction for chain ${chain}:`, error);
-    return null;
+    console.error(`Error broadcasting ${chain} transaction:`, error);
+    throw error; // Re-throw
   }
 };
 

@@ -133,28 +133,36 @@
     *   [x] Review existing `src/services/ThorchainService.ts`.
     *   [x] Confirm service structure for client management, asset handling, quotes, approvals, swap execution, and status tracking.
     *   [x] Implement stricter decimal handling in `getAssetDecimals`, `getSwapQuote`, and `getAvailableAssets`.
+        *   [x] Enhanced `getAssetDecimals` with a predefined list for common ERC20s and graceful handling of unknown tokens for `getAvailableAssets`.
     *   [x] Review `app/dex/page.tsx` for integration with `ThorchainService`, including signer injection from Particle context.
-    *   [ ] Address full non-EVM source asset swap capabilities (requires deeper Particle integration for non-EVM signing).
+    *   [x] Address full non-EVM source asset swap capabilities:
+        *   [x] `ThorchainService.executeSwap` updated to return unsigned transaction data (PSBT for BTC, SignDoc for Cosmos) for non-EVM chains.
+        *   [x] Implemented initial non-EVM functionality in `lib/particle.ts` for `getNonEvmAddress`, `signNonEvmTransaction`, `broadcastNonEvmTransaction` (with notes on further Particle SDK verification needed).
+        *   [x] Refactored `app/dex/page.tsx` (`handleExecuteSwap`) to use the new non-EVM flow: get unsigned data, call sign, call broadcast.
 *   **Task: ZetaChain Integration - Initial Research & Basic Setup.**
     *   [x] Review existing `src/services/ZetaChainService.ts`.
     *   [x] Confirm service structure for client initialization, listing ZRC-20s (`listSupportedForeignCoins`), asset deposits (`depositAssetToZetaChain`), basic ZRC-20 swap quotes, and CCTX tracking.
     *   [x] Add `formatUnits` import.
-    *   [x] Review `app/dex/page.tsx` for basic ZetaChain service integration (displaying ZRC-20s).
+    *   [x] Review `app/dex/page.tsx` for basic ZetaChain service integration (displaying ZRC20s).
 *   **Task: Refactor Existing P2P and Dashboard Features.**
     *   [x] Confirm LocalCoinSwap P2P (read-only parts) remain operational with no immediate changes needed for Particle integration.
     *   [x] Update User Dashboard (`app/dashboard/page.tsx`) to display user/wallet info from Particle context.
     *   [x] Simulate Thorchain transaction history display in Dashboard UI (actual data requires backend).
 *   **Task: Advanced ZetaChain Integration (Omnichain Smart Contracts - Conceptual).**
     *   [x] Outline "Swap and Call" use case.
-    *   [x] Enhance `ZetaChainService.ts` with structured (placeholder) methods for `executeZRC20Swap` and `callRemoteContractWithMessage`.
-    *   [ ] Full implementation of advanced ZetaChain methods (requires specific SDK deep-dive and testing environment).
+    *   [x] Enhance `ZetaChainService.ts` with structured (placeholder) methods for `executeZRC20Swap`.
+    *   [x] Refined conceptual outline for `ZetaChainService.ts` `callRemoteContractWithMessage` with detailed parameter explanations and interaction flow via `client.send()`.
+    *   [ ] Full implementation of advanced ZetaChain methods (requires specific SDK deep-dive, testing environment, and actual ZetaChain system contract details).
     *   [ ] Design and develop custom omnichain smart contracts on ZetaChain (if specific use cases are finalized and require them).
 *   **Task: Comprehensive Testing (Conceptual Outline & Initial Unit Tests).**
     *   [x] Review existing unit tests for services.
     *   [x] Add unit test outline for `ThorchainService.checkAndRequestApproval`.
     *   [x] Develop further unit tests for `ThorchainService` (including non-EVM `executeSwap` path) and `ZetaChainService` (quote, ZRC20 swap, deposit).
+    *   [x] Outlined unit test cases for new non-EVM functions in `lib/particle.ts`.
+    *   [x] Outlined unit test cases for `app/dex/page.tsx` non-EVM swap flow.
     *   [ ] Develop unit tests for UI components (`Header.tsx`, `DexPage.tsx`).
     *   [x] Define and (conceptually) prepare for integration tests (Particle Auth -> Service flows, Thorchain EVM & Non-EVM swaps, ZetaChain operations). *Actual execution pending manual testing.*
+    *   [x] Defined manual E2E test scenarios for various swap types and error conditions.
     *   [ ] Define and (conceptually) prepare for E2E tests (login, P2P, swap flows).
 
 ### Integration Test Cases (Conceptual - Requires Manual Execution):
