@@ -101,3 +101,23 @@
 - Added wallet support for Bitcoin, Ethereum, and TON
 - Configured retry mechanisms and transaction resilience
 - Implemented wallet connections and network configurations
+
+---
+
+## Technology Pivot (Date: YYYY-MM-DD) - Action Required for Next Tasks
+
+**A decision has been made to pivot the technology stack for the cross-chain DEX aggregator and user wallet/authentication components.**
+
+*   **DEX Aggregator:** Moving from Rango Exchange to a combination of **ZetaChain** (for omnichain smart contract capabilities) and **Thorchain (via XChainJS)** (for cross-chain liquidity).
+*   **Wallet & Authentication:** Adopting **Particle Network** for Wallet-as-a-Service (WaaS), social/email logins, and potential Account Abstraction (AA) features.
+
+**The `AGENTS.md` file has been updated to reflect this new direction and provides strategic guidance for these integrations.**
+
+**Impact on Progress:**
+*   Tasks related to Rango integration under "Milestone 1.3" (specifically 1.3.5, 1.3.6, 1.3.7) are now considered complete in the context of the *previous* architecture. Future work will focus on the new stack.
+*   The planning and assessment for this technology pivot are now complete.
+
+**Next Steps:** New tasks should be created based on the guidance in `AGENTS.md` to implement the Particle Network, Thorchain/XChainJS, and ZetaChain integrations. For example:
+    *   "Task: Integrate Particle Network for User Authentication and Wallet Management."
+    *   "Task: Implement Core Swap Functionality with Thorchain via XChainJS."
+    *   "Task: Research and Define ZetaChain Integration Points for Omnichain Logic."
