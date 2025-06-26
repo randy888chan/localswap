@@ -30,77 +30,117 @@ const getAssetDetails = (symbol: string): SimpleAsset | null => {
   return null;
 };
 
+// Helper to get a unique key for SimpleAsset, useful for React lists
+const getAssetKey = (asset: SimpleAsset) => `${asset.chain}-${asset.symbol}`;
 
 const DexPage: React.FC = () => {
   const [ctaText, setCta] = useState('Start Trading');
   const { userInfo, walletAccounts, isLoadingAuth, login, logout, connectWallet, openWallet } = useParticleAuth();
 
-  // Thorchain Service instance
-  // Memoize to avoid re-creating on every render, re-create if network changes
-  const thorchainService = useMemo(() => new ThorchainService(Network.Mainnet), []); // Or Network.Testnet
+  // Services
+  const thorchainService = useMemo(() => new ThorchainService(Network.Mainnet), []);
   const zetaChainService = useMemo(() => new ZetaChainService(), []);
 
+  // Asset lists
+  const [allAssets, setAllAssets] = useState<SimpleAsset[]>([]);
+  const [fromAssets, setFromAssets] = useState<SimpleAsset[]>([]);
+  const [toAssets, setToAssets] = useState<SimpleAsset[]>([]);
+  const [isLoadingAssets, setIsLoadingAssets] = useState<boolean>(false);
 
-  // Thorchain Swap UI state
-  const [fromAssetSymbol, setFromAssetSymbol] = useState<string>('ETH.ETH'); // Default example
-  const [toAssetSymbol, setToAssetSymbol] = useState<string>('BTC.BTC');   // Default example
+  // Selected assets
+  const [selectedFromAssetSymbol, setSelectedFromAssetSymbol] = useState<string>(''); // Store symbol string
+  const [selectedToAssetSymbol, setSelectedToAssetSymbol] = useState<string>('');     // Store symbol string
+
   const [amount, setAmount] = useState<string>('0.1');
   const [quote, setQuote] = useState<ThorchainQuote | null>(null);
   const [isFetchingQuote, setIsFetchingQuote] = useState<boolean>(false);
   const [isSwapping, setIsSwapping] = useState<boolean>(false);
   const [swapTxHash, setSwapTxHash] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [transactionStatus, setTransactionStatus] = useState<any | null>(null); // To store status from polling
+  const [transactionStatus, setTransactionStatus] = useState<any | null>(null);
 
-  // ZetaChain UI State
-  const [zetaForeignCoins, setZetaForeignCoins] = useState<any[]>([]);
+  // ZetaChain UI State (keeping existing structure for now)
+  const [zetaAssetsForDisplay, setZetaAssetsForDisplay] = useState<SimpleAsset[]>([]);
   const [isFetchingZetaCoins, setIsFetchingZetaCoins] = useState<boolean>(false);
   const [zetaError, setZetaError] = useState<string | null>(null);
 
-
-  // Effect to initialize ThorchainService & ZetaChainService with signer when wallet connects
+  // Effect to initialize services and fetch assets
   useEffect(() => {
-    const initServicesWithSigner = async () => {
+    const initializeAndLoadAssets = async () => {
+      setIsLoadingAssets(true);
+      let signerAvailable = false;
       if (walletAccounts && walletAccounts.length > 0) {
-        const signer = await getEthersSigner(); // From lib/particle
-        const provider = getEthersProvider(); // From lib/particle
-        
-        // Initialize ThorchainService
+        const signer = await getEthersSigner();
+        const provider = getEthersProvider();
         if (signer && provider) {
-          thorchainService.setEvmSigner(signer, provider);
+          await thorchainService.setEvmSigner(signer, provider);
           console.log("ThorchainService EVM signer initialized.");
-        } else {
-          thorchainService.setEvmSigner(null);
-          console.log("Failed to get EVM signer for ThorchainService from Particle.");
-        }
-
-        // Initialize ZetaChainService
-        // IMPORTANT: This assumes getEthersSigner() returns an ethers v5 compatible signer
-        // if ZetaChainClient strictly requires it. If there's a version mismatch (e.g. Particle uses ethers v6)
-        // this initialization might fail or behave unexpectedly.
-        // A dedicated getEthersV5Signer() might be needed in lib/particle.ts
-        if (signer) {
-          // @ts-ignore TODO: Address potential ethers v5/v6 signer incompatibility if issues arise.
-          const success = await zetaChainService.initializeClient(signer as Signer); // Cast if necessary
-          if (success) {
+          // @ts-ignore TODO: Confirm ethers v5/v6 compatibility for ZetaChain
+          const zetaSuccess = await zetaChainService.initializeClient(signer as Signer);
+          if (zetaSuccess) {
             console.log("ZetaChainService client initialized.");
           } else {
             console.error("Failed to initialize ZetaChainService client.");
-            setZetaError("Failed to initialize ZetaChain client. Ensure wallet is on a supported network or check console.");
+            setZetaError("Failed to initialize ZetaChain client.");
           }
+          signerAvailable = true;
         } else {
-            console.log("No EVM signer available for ZetaChainService.");
+          thorchainService.setEvmSigner(null); // Clear signer if not available
+          console.log("EVM signer/provider not available from Particle.");
         }
-
       } else {
-        thorchainService.setEvmSigner(null); // Clear Thorchain signer
-        // Consider how to de-initialize or handle ZetaChainService when wallet disconnects
-        // zetaChainService.deinitializeClient(); // if such a method exists
+        thorchainService.setEvmSigner(null); // Clear Thorchain signer if wallet disconnects
+        // Handle ZetaChain de-initialization if applicable
         console.log("Wallet disconnected, signers cleared for services.");
       }
+
+      try {
+        const tcAssets = await thorchainService.getAvailableAssets();
+        let zcAssets: SimpleAsset[] = [];
+        if (zetaChainService.isInitialized()) {
+          zcAssets = await zetaChainService.listSupportedForeignCoins();
+          setZetaAssetsForDisplay(zcAssets); // For the separate ZetaChain display section
+        }
+
+        // Combine and de-duplicate assets
+        const combined = [...tcAssets];
+        const zetaSymbols = new Set(tcAssets.map(a => a.symbol));
+        zcAssets.forEach(za => {
+          if (!zetaSymbols.has(za.symbol)) { // Basic deduplication by symbol
+            combined.push(za);
+          }
+        });
+
+        setAllAssets(combined);
+        // Initially, from and to assets can be all available assets.
+        // Filtering can be added later (e.g. based on chain compatibility or if an asset is ZRC20 only)
+        setFromAssets(combined);
+        setToAssets(combined);
+
+        // Set default selected assets if list is not empty
+        if (combined.length > 0) {
+          // Try to set previous defaults or sensible new defaults
+          const defaultFrom = combined.find(a => a.symbol === 'ETH.ETH') || combined[0];
+          setSelectedFromAssetSymbol(defaultFrom.symbol);
+
+          if (combined.length > 1) {
+            const defaultTo = combined.find(a => a.symbol === 'BTC.BTC') || combined.find(a => a.symbol !== defaultFrom.symbol) || combined[1];
+            if (defaultTo) setSelectedToAssetSymbol(defaultTo.symbol);
+          } else {
+             setSelectedToAssetSymbol(''); // Or handle single asset case
+          }
+        }
+
+      } catch (err) {
+        console.error("Error loading assets:", err);
+        setError("Failed to load available assets.");
+      } finally {
+        setIsLoadingAssets(false);
+      }
     };
-    initServicesWithSigner();
-  }, [walletAccounts, thorchainService, zetaChainService]);
+
+    initializeAndLoadAssets();
+  }, [walletAccounts, thorchainService, zetaChainService]); // Re-run if wallet or services change
 
 
   useEffect(() => {
@@ -138,75 +178,74 @@ const DexPage: React.FC = () => {
   const handleGetQuote = async () => {
     setError(null);
     setQuote(null);
-    if (!fromAssetSymbol || !toAssetSymbol || !amount) {
-      setError("Please fill in all fields for the quote.");
+    if (!selectedFromAssetSymbol || !selectedToAssetSymbol || !amount) {
+      setError("Please select assets and enter an amount for the quote.");
       return;
     }
-    const fromAssetDetails = getAssetDetails(fromAssetSymbol);
-    const toAssetDetails = getAssetDetails(toAssetSymbol);
+
+    const fromAssetDetails = allAssets.find(a => a.symbol === selectedFromAssetSymbol);
+    const toAssetDetails = allAssets.find(a => a.symbol === selectedToAssetSymbol);
 
     if (!fromAssetDetails || !toAssetDetails) {
-      setError("Invalid asset symbol provided. Please use format like ETH.ETH or BTC.BTC.");
+      setError("Selected asset details not found. Please refresh asset list or check selection.");
       return;
     }
 
-    // Use the connected wallet address as the destination if not specified otherwise
-    // For quotes, destination might not be strictly needed by THORChain but good to have.
-    const destinationAddress = walletAccounts?.[0]; // Use the first connected account
+    // TODO: Ensure decimals are correctly populated in allAssets
+    if (fromAssetDetails.decimals === undefined || toAssetDetails.decimals === undefined) {
+        setError(`Asset decimals missing for ${fromAssetDetails.symbol} or ${toAssetDetails.symbol}. Cannot proceed.`);
+        console.error("Asset decimals missing", fromAssetDetails, toAssetDetails);
+        return;
+    }
+
+    const destinationAddress = walletAccounts?.[0];
 
     setIsFetchingQuote(true);
     try {
       const fetchedQuote = await thorchainService.getSwapQuote(
         fromAssetDetails,
         toAssetDetails,
-        amount, // Input amount is human-readable
-        destinationAddress // Optional for quote, but good to pass if available
+        amount,
+        destinationAddress
       );
       if (fetchedQuote) {
         setQuote(fetchedQuote);
       } else {
-        setError("Failed to fetch quote from THORChain. Check console for details.");
+        setError("Failed to fetch quote from THORChain.");
       }
     } catch (e: any) {
-      console.error("Error fetching quote:", e);
-      setError(e.message || "An unknown error occurred while fetching the quote.");
+      setError(e.message || "Error fetching quote.");
     } finally {
       setIsFetchingQuote(false);
     }
   };
 
-  const handleFetchZetaForeignCoins = async () => {
-    setZetaError(null);
-    setIsFetchingZetaCoins(true);
-    try {
-      if (!zetaChainService.isInitialized()) {
-        setZetaError("ZetaChain client not initialized. Connect wallet and ensure it's on a supported network.");
-        setIsFetchingZetaCoins(false);
-        // Attempt to re-initialize if wallet is connected but service isn't ready
-        if (walletAccounts && walletAccounts.length > 0) {
-            const signer = await getEthersSigner();
-            if (signer) {
-                // @ts-ignore
-                await zetaChainService.initializeClient(signer as Signer);
-                if (zetaChainService.isInitialized()) {
-                    const coins = await zetaChainService.listSupportedForeignCoins();
-                    setZetaForeignCoins(coins);
-                } else {
-                     setZetaError("Failed to re-initialize ZetaChain client.");
-                }
-            }
+  // This function might be redundant if assets are fetched once on load
+  // Or it can be used as a manual refresh for Zeta assets specifically
+  const handleFetchZetaAssetsForDisplay = async () => {
+    if (!zetaChainService.isInitialized()) {
+      setZetaError("ZetaChain client not initialized.");
+      // Attempt re-initialization
+      if (walletAccounts && walletAccounts.length > 0) {
+        const signer = await getEthersSigner();
+        if (signer) { // @ts-ignore
+            await zetaChainService.initializeClient(signer as Signer);
         }
-        return;
       }
+      if (!zetaChainService.isInitialized()) return;
+    }
+    setIsFetchingZetaCoins(true);
+    setZetaError(null);
+    try {
       const coins = await zetaChainService.listSupportedForeignCoins();
-      setZetaForeignCoins(coins);
+      setZetaAssetsForDisplay(coins); // Update the specific display list
     } catch (e: any) {
-      console.error("Error fetching ZetaChain foreign coins:", e);
-      setZetaError(e.message || "Failed to fetch ZetaChain foreign coins.");
+      setZetaError(e.message || "Failed to fetch ZetaChain assets.");
     } finally {
       setIsFetchingZetaCoins(false);
     }
   };
+
 
   const pollTransactionStatus = async (txHash: string, chain: Chain) => {
     setTransactionStatus({ status: 'polling', message: `Polling status for ${txHash}...` });
@@ -343,52 +382,65 @@ const DexPage: React.FC = () => {
         <div className="mt-6 p-4 border rounded-lg shadow-md">
           <h2 className="text-xl font-semibold mb-3">THORChain Swap</h2>
 
-          {/* Asset Selection & Amount Input - Basic Implementation */}
+          {isLoadingAssets && <p>Loading available assets...</p>}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             <div>
-              <label htmlFor="fromAsset" className="block text-sm font-medium text-gray-700">From Asset (e.g., ETH.ETH)</label>
-              <input
-                type="text"
-                name="fromAsset"
+              <label htmlFor="fromAsset" className="block text-sm font-medium text-gray-700">From Asset</label>
+              <select
                 id="fromAsset"
+                name="fromAsset"
+                value={selectedFromAssetSymbol}
+                onChange={(e) => setSelectedFromAssetSymbol(e.target.value)}
                 className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                value={fromAssetSymbol}
-                onChange={(e) => setFromAssetSymbol(e.target.value)}
-                placeholder="ETH.ETH"
-              />
+                disabled={isLoadingAssets || fromAssets.length === 0}
+              >
+                <option value="" disabled>Select asset</option>
+                {fromAssets.map((asset) => (
+                  <option key={getAssetKey(asset)} value={asset.symbol}>
+                    {asset.name || `${asset.ticker} (${asset.chain})`} ({asset.source})
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
-              <label htmlFor="toAsset" className="block text-sm font-medium text-gray-700">To Asset (e.g., BTC.BTC)</label>
-              <input
-                type="text"
-                name="toAsset"
+              <label htmlFor="toAsset" className="block text-sm font-medium text-gray-700">To Asset</label>
+              <select
                 id="toAsset"
+                name="toAsset"
+                value={selectedToAssetSymbol}
+                onChange={(e) => setSelectedToAssetSymbol(e.target.value)}
                 className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                value={toAssetSymbol}
-                onChange={(e) => setToAssetSymbol(e.target.value)}
-                placeholder="BTC.BTC"
-              />
+                disabled={isLoadingAssets || toAssets.length === 0}
+              >
+                <option value="" disabled>Select asset</option>
+                {toAssets.map((asset) => (
+                  <option key={getAssetKey(asset)} value={asset.symbol}>
+                    {asset.name || `${asset.ticker} (${asset.chain})`} ({asset.source})
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
           <div className="mb-4">
             <label htmlFor="amount" className="block text-sm font-medium text-gray-700">Amount to Swap</label>
             <input
-              type="number"
+              type="text" // Changed to text to allow for easier decimal input by user
               name="amount"
               id="amount"
               className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              placeholder="1.0"
+              placeholder="0.1"
             />
           </div>
 
           <button
             onClick={handleGetQuote}
-            disabled={isFetchingQuote || !fromAssetSymbol || !toAssetSymbol || !amount}
+            disabled={isFetchingQuote || isLoadingAssets || !selectedFromAssetSymbol || !selectedToAssetSymbol || !amount}
             className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded disabled:opacity-50"
           >
-            {isFetchingQuote ? 'Fetching Quote...' : 'Get Quote'}
+            {isFetchingQuote ? 'Fetching Quote...' : (isLoadingAssets ? 'Assets Loading...' : 'Get Quote')}
           </button>
 
           {/* Display Quote */}
@@ -445,39 +497,43 @@ const DexPage: React.FC = () => {
         </div>
       )}
 
-      {/* ZetaChain Section */}
-      {userInfo && walletAccounts && walletAccounts.length > 0 && zetaChainService.isInitialized() && (
+          {/* ZetaChain Section - Displaying assets fetched during initial load */}
+      {userInfo && walletAccounts && walletAccounts.length > 0 && (
         <div className="mt-6 p-4 border rounded-lg shadow-md">
-          <h2 className="text-xl font-semibold mb-3">ZetaChain Interactions</h2>
+          <h2 className="text-xl font-semibold mb-3">ZetaChain ZRC20 Assets</h2>
           <button
-            onClick={handleFetchZetaForeignCoins}
-            disabled={isFetchingZetaCoins}
-            className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded disabled:opacity-50"
+            onClick={handleFetchZetaAssetsForDisplay} // Can be used as a manual refresh
+            disabled={isFetchingZetaCoins || !zetaChainService.isInitialized()}
+            className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded disabled:opacity-50 mb-2"
           >
-            {isFetchingZetaCoins ? 'Fetching ZRC20s...' : 'List Supported ZRC20s (Foreign Coins)'}
+            {isFetchingZetaCoins ? 'Refreshing ZRC20s...' : 'Refresh ZRC20 List'}
           </button>
+          {!zetaChainService.isInitialized() && <p className="text-sm text-yellow-600">ZetaChain client not ready (connect wallet or check console).</p>}
           {zetaError && <p className="mt-2 text-red-500">ZetaChain Error: {zetaError}</p>}
-          {zetaForeignCoins.length > 0 && (
+
+          {zetaAssetsForDisplay.length > 0 ? (
             <div className="mt-3">
-              <h4 className="font-medium">Supported Foreign Coins (ZRC20s on ZetaChain):</h4>
+              <h4 className="font-medium">Available ZRC20s on ZetaChain:</h4>
               <ul className="list-disc list-inside text-sm max-h-48 overflow-y-auto bg-gray-50 p-2 rounded">
-                {zetaForeignCoins.map((coin, index) => (
-                  <li key={index}>
-                    {coin.symbol} (on chain ID: {coin.foreign_chain_id}) - ZRC20: <code className="text-xs">{coin.zrc20_contract_address}</code>
+                {zetaAssetsForDisplay.map((asset) => (
+                  <li key={getAssetKey(asset)}>
+                    {asset.name || asset.ticker} ({asset.symbol}) - ZRC20: <code className="text-xs">{asset.contractAddress}</code>
                   </li>
                 ))}
               </ul>
             </div>
+          ) : (
+            <p className="text-sm text-gray-500">No ZRC20 assets loaded or available.</p>
           )}
         </div>
       )}
-       {userInfo && walletAccounts && walletAccounts.length > 0 && !zetaChainService.isInitialized() && (
+
+      {!zetaChainService.isInitialized() && userInfo && walletAccounts && walletAccounts.length > 0 && (
          <div className="mt-6 p-4 border rounded-lg shadow-md bg-yellow-50">
-            <p className="text-yellow-700">ZetaChain client not initialized. Please ensure your connected wallet is on a network supported by ZetaChain for interactions (e.g., a testnet like Goerli for ZetaChain Athens-3 testnet) or try reconnecting your wallet.</p>
+            <p className="text-yellow-700">ZetaChain client not initialized. Ensure your connected wallet is on a network supported by ZetaChain for interactions (e.g., a testnet like Goerli for ZetaChain Athens-3 testnet) or try reconnecting your wallet.</p>
             {zetaError && <p className="mt-1 text-red-600">Last attempt error: {zetaError}</p>}
          </div>
        )}
-
 
       {!userInfo || !walletAccounts || walletAccounts.length === 0 && (
         <div className="my-4 p-4 border rounded bg-gray-50">

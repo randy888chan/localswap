@@ -1,18 +1,26 @@
-import { Network, TxParams } from '@xchainjs/xchain-client';
+import { Network, TxParams, XChainClient } from '@xchainjs/xchain-client';
 import { ThorchainAMM, QuoteSwapParams as ThorchainAmmQuoteSwapParams, EstimateSwapParams } from '@xchainjs/xchain-thorchain-amm';
 import { ThorchainQuery, QuoteSwapParams, QuoteSwap, LastBlock, LiquidityPool } from '@xchainjs/xchain-thorchain-query';
-import { assetAmount, assetFromString, Asset, formatAssetAmountCurrency, baseAmount, AssetAmount } from '@xchainjs/xchain-util';
+import { assetAmount, assetFromString, Asset, formatAssetAmountCurrency, baseAmount, AssetAmount, Chain } from '@xchainjs/xchain-util';
 import { Client as EthClient, ETHAddress } from '@xchainjs/xchain-ethereum';
+// Import other necessary XChainJS clients as they are implemented
+// import { Client as BtcClient } from '@xchainjs/xchain-bitcoin';
+// import { Client as BnbClient } from '@xchainjs/xchain-binance'; // Example for BNB Beacon Chain
+// import { Client as CosmosClient } from '@xchainjs/xchain-cosmos'; // Example for Cosmos Hub (ATOM)
+
 import { Signer, providers } from 'ethers';
-import { Chain } from '@xchainjs/xchain-util';
+// import { Wallet } from '@particle-network/connect'; // Or appropriate type from Particle for non-EVM wallet info
 
 // Define a simpler Asset type for UI and function parameters
 export interface SimpleAsset {
   chain: Chain; // e.g., Chain.Ethereum, Chain.Bitcoin
   ticker: string; // e.g., 'ETH', 'BTC', 'USDT'
   symbol: string; // e.g., ETH.ETH, BTC.BTC, BSC.USDT-0x...
+  name?: string; // Optional: user-friendly name, e.g., "Ethereum", "Bitcoin", "Tether USD"
   contractAddress?: string; // For tokens
   decimals?: number; // Important for amount conversions
+  iconUrl?: string; // Optional: for UI
+  source?: 'thorchain' | 'zetachain' | 'custom'; // To know where it came from
 }
 
 export interface ThorchainQuote {
@@ -40,47 +48,64 @@ export interface ThorchainQuote {
 export class ThorchainService {
   private thorchainQuery: ThorchainQuery;
   private thorchainAmm: ThorchainAMM;
-  private ethClient?: EthClient; // For Ethereum interactions
-  // Add other clients (BTC, BNB etc. as needed)
+  private clients: Map<Chain, XChainClient | EthClient> = new Map(); // Store various chain clients
   public network: Network;
 
   constructor(network: Network = Network.Mainnet) {
     this.network = network;
     this.thorchainQuery = new ThorchainQuery();
-    // ThorchainAMM is initialized without clients initially.
-    // Clients are added via setSigner or similar methods.
-    this.thorchainAmm = new ThorchainAMM(this.thorchainQuery);
+    this.thorchainAmm = new ThorchainAMM(this.thorchainQuery); // ThorchainQuery is passed for Midgard/Thornode interaction
     console.log(`ThorchainService initialized for ${network}`);
   }
 
-  // Method to update the EVM signer (e.g., from Particle Network)
-  public async setEvmSigner(signer: Signer | null, ethProvider?: providers.JsonRpcProvider) {
+  public async setEvmSigner(signer: Signer | null, ethProvider?: providers.JsonRpcProvider, targetChain: Chain = Chain.Ethereum) {
     if (signer && ethProvider) {
-      // TODO: Make network & phrase configurable or dynamically determined
-      // For xchain-ethereum, a phrase is not strictly needed if a signer is provided for online operations.
-      // Default XChainJS Ethereum client parameters:
       const ethClientParams = {
         network: this.network,
-        phrase: undefined, // Not needed with a signer for online operations
-        etherscanApiKey: process.env.NEXT_PUBLIC_ETHERSCAN_API_KEY, // Optional: for faster tx confirmation
-        ethplorerApiKey: process.env.NEXT_PUBLIC_ETHPLORER_API_KEY, // Optional: for token balances
-        provider: ethProvider, // Ethers provider
-        signer: signer, // Ethers signer
+        phrase: undefined,
+        etherscanApiKey: process.env.NEXT_PUBLIC_ETHERSCAN_API_KEY,
+        ethplorerApiKey: process.env.NEXT_PUBLIC_ETHPLORER_API_KEY,
+        provider: ethProvider,
+        signer: signer,
       };
-      this.ethClient = new EthClient(ethClientParams);
-      // Add or update the Ethereum client in ThorchainAMM
-      this.thorchainAmm.addChainClient(Chain.Ethereum, this.ethClient);
-      console.log("ThorchainService: EVM Signer and Ethereum client set.");
-    } else {
-      if (this.ethClient) {
-        this.ethClient.purgeClient();
+      // Assuming EthClient can be used for multiple EVM chains if configured correctly (e.g. BSC, AVAX)
+      // For now, explicitly handling Ethereum. Other EVM chains might need their own XChainJS client (e.g. BscClient)
+      // or a more generic EVM client setup if XChainJS supports it.
+      if (targetChain === Chain.Ethereum || targetChain === Chain.Avalanche || targetChain === Chain.BinanceSmartChain) { // Example EVM chains
+        const client = new EthClient(ethClientParams); // Or specific client like BscClient if available and needed
+        this.clients.set(targetChain, client);
+        this.thorchainAmm.addChainClient(targetChain, client); // Register with AMM
+        console.log(`ThorchainService: ${targetChain} client with EVM signer set.`);
+      } else {
+        console.warn(`ThorchainService: EVM signer provided for non-standard EVM target chain ${targetChain}. Client not set.`);
       }
-      this.ethClient = undefined;
-      // If you need to remove the client from ThorchainAMM or re-initialize AMM:
-      this.thorchainAmm = new ThorchainAMM(this.thorchainQuery); // Re-init or implement removeChainClient if available
-      console.log("ThorchainService: EVM Signer removed. Ethereum client purged.");
+    } else {
+      const client = this.clients.get(targetChain);
+      if (client && typeof (client as EthClient).purgeClient === 'function') { // Check if it's an EthClient instance
+        (client as EthClient).purgeClient();
+      }
+      this.clients.delete(targetChain);
+      // Re-initialize AMM or implement removeChainClient if available and specific removal is needed.
+      // For simplicity, clearing clients and re-adding is one way if ThorchainAMM doesn't support targeted removal well.
+      // This current ThorchainAMM version might just overwrite if addChainClient is called again.
+      console.log(`ThorchainService: EVM signer removed for ${targetChain}. Client purged/removed.`);
+       // Rebuild AMM clients based on current map (if AMM requires all at once or doesn't support removal)
+       this.thorchainAmm = new ThorchainAMM(this.thorchainQuery);
+       this.clients.forEach((c, ch) => this.thorchainAmm.addChainClient(ch, c));
     }
   }
+
+  // Generic method to set any XChainClient (e.g., for BTC, LTC, BNB)
+  public setXChainClient(chain: Chain, client: XChainClient): void {
+    this.clients.set(chain, client);
+    this.thorchainAmm.addChainClient(chain, client); // Register with AMM
+    console.log(`ThorchainService: ${chain} client set.`);
+  }
+
+  public getClientForChain(chain: Chain): XChainClient | EthClient | undefined {
+    return this.clients.get(chain);
+  }
+
 
   private getAssetDecimals(asset: Asset, simpleAsset?: SimpleAsset): number {
     if (simpleAsset?.decimals !== undefined) {
@@ -89,19 +114,42 @@ export class ThorchainService {
     // Fallback logic if not provided in SimpleAsset - this needs to be robust
     // For THORChain's internal math, it often uses 8 decimals.
     // However, for displaying to user or constructing client-side txs, true decimals are needed.
-    if (asset.chain === Chain.Bitcoin || asset.chain === Chain.BitcoinCash || asset.chain === Chain.Litecoin || asset.chain === Chain.Dogecoin) return 8;
-    if (asset.chain === Chain.Ethereum || asset.chain === Chain.Avalanche || asset.chain === Chain.BinanceSmartChain) {
-        // Native assets usually have 18 decimals
-        if (asset.symbol === Chain.Ethereum || asset.symbol === Chain.Avalanche || asset.symbol === Chain.BinanceSmartChain) return 18;
-        // For ERC20s, this is crucial and should ideally come from a trusted source or token list
-        // Defaulting to 18 for unknown ERC20s is a common but potentially incorrect assumption.
-        // For this example, we'll assume SimpleAsset carries the correct decimals.
-        return 18;
+    // Prioritize decimals from SimpleAsset if provided, as it might come from a reliable token list.
+    if (simpleAsset?.decimals !== undefined) {
+        return simpleAsset.decimals;
     }
-    if (asset.chain === Chain.Cosmos || asset.chain === Chain.THORChain) return 6; // Example for ATOM or RUNE (native on its chain)
-
-    console.warn(`Decimals for ${asset.chain}.${asset.symbol} not accurately determined, defaulting to 8. Ensure SimpleAsset.decimals is provided.`);
-    return 8; // Default if not found, THORChain's internal default
+    // Fallback logic for known chains and asset types
+    // THORChain's internal representation for amounts is often 1e8, but assets have their own native decimals.
+    switch (asset.chain) {
+        case Chain.Bitcoin:
+        case Chain.BitcoinCash:
+        case Chain.Litecoin:
+        case Chain.Dogecoin:
+            return 8;
+        case Chain.Ethereum:
+        case Chain.Avalanche:
+        case Chain.BinanceSmartChain:
+            // For native gas assets on EVM chains
+            if (asset.symbol === 'ETH' && asset.chain === Chain.Ethereum) return 18;
+            if (asset.symbol === 'AVAX' && asset.chain === Chain.Avalanche) return 18;
+            if (asset.symbol === 'BNB' && asset.chain === Chain.BinanceSmartChain) return 18;
+            // For ERC20s, decimals MUST be known. XChainJS assets for ERC20s
+            // usually don't embed decimals directly in the string.
+            // This is a critical point: a separate token list or API is needed for ERC20 decimals.
+            // Defaulting here is dangerous.
+            console.warn(`Attempting to get decimals for ERC20/token ${asset.symbol} on ${asset.chain} without SimpleAsset.decimals. This is unreliable.`);
+            return 18; // Highly likely to be incorrect for many tokens if not the native one.
+        case Chain.Cosmos: // ATOM
+            return 6;
+        case Chain.THORChain: // RUNE
+             // Native RUNE on THORChain mainnet/testnet has 8 decimals.
+             // ERC20 RUNE or BEP2 RUNE had different decimals (e.g., 18 or 8).
+             // Assuming native THOR.RUNE here.
+            return 8;
+        default:
+            console.warn(`Decimals for ${asset.chain}.${asset.symbol} not explicitly defined, defaulting to 8. This might be incorrect.`);
+            return 8; // THORChain's common internal precision, but not necessarily asset's native decimal.
+    }
 }
 
 
@@ -192,25 +240,34 @@ export class ThorchainService {
 
   public async checkAndRequestApproval(
     asset: SimpleAsset,
-    amountCryptoPrecision: string, // Amount that needs approval, in crypto precision
-    spenderAddress: string, // Typically the THORChain router or inbound address
+    amountCryptoPrecision: string,
+    spenderAddress: string,
     walletAddress: string
   ): Promise<{ approved: boolean; approveTxHash?: string; error?: string }> {
-    if (asset.chain !== Chain.Ethereum || !asset.contractAddress || !this.ethClient) {
-      // Not an EVM ERC20 token or EthClient not available
-      return { approved: true };
+    const activeClient = this.getClientForChain(asset.chain);
+    if (!activeClient || !(activeClient instanceof EthClient)) {
+      // Not an EVM chain with an EthClient or client not available
+      return { approved: true }; // Assume approved or not applicable for non-EVM/non-EthClient chains
+    }
+
+    const ethClient = activeClient as EthClient;
+
+    if (!asset.contractAddress) { // Only ERC20 tokens need approval
+        return { approved: true };
     }
 
     try {
       const tokenAsset = assetFromString(asset.symbol);
       if (!tokenAsset) throw new Error("Invalid asset for approval check");
 
-      const amountToApprove = baseAmount(amountCryptoPrecision, asset.decimals || 18);
+      // Ensure decimals are correctly sourced for amountToApprove
+      const decimals = this.getAssetDecimals(tokenAsset, asset);
+      const amountToApprove = baseAmount(amountCryptoPrecision, decimals);
 
-      const isApproved = await this.ethClient.isApproved({
+      const isApproved = await ethClient.isApproved({
         asset: tokenAsset,
         amount: amountToApprove,
-        spenderAddress: spenderAddress, // Spender is the THORChain router/contract
+        spenderAddress: spenderAddress,
         walletAddress: walletAddress,
       });
 
@@ -218,47 +275,44 @@ export class ThorchainService {
         return { approved: true };
       }
 
-      // If not approved, request approval
-      console.log(`Requesting approval for ${asset.symbol} to spender ${spenderAddress}`);
-      const approveTxHash = await this.ethClient.approve({
+      console.log(`Requesting approval for ${asset.symbol} to spender ${spenderAddress} on chain ${asset.chain}`);
+      const approveTxHash = await ethClient.approve({
         asset: tokenAsset,
-        amount: amountToApprove, // Could approve max (Infinity) or the specific amount
+        amount: amountToApprove,
         spenderAddress: spenderAddress,
-        // gasPrice, gasLimit can be optionally passed
       });
-      console.log(`Approval transaction submitted: ${approveTxHash}`);
-      // It's good practice to wait for the approval transaction to be confirmed.
-      // For simplicity here, we return the hash. UI should handle waiting.
+      console.log(`Approval transaction submitted on ${asset.chain}: ${approveTxHash}`);
       return { approved: false, approveTxHash };
 
     } catch (error: any) {
-      console.error(`Error during ERC20 approval for ${asset.symbol}:`, error);
+      console.error(`Error during ERC20 approval for ${asset.symbol} on ${asset.chain}:`, error);
       return { approved: false, error: error.message || 'Approval failed' };
     }
   }
 
   public async executeSwap(
     quote: ThorchainQuote,
-    userFromAddress: string, // Address of the user initiating the swap (e.g., from Particle)
-    userDestinationAddress: string // Final recipient address for the output asset
-  ): Promise<string> { // Returns transaction hash
+    userFromAddress: string,
+    userDestinationAddress: string
+  ): Promise<string> {
     if (!quote.inboundAddress) {
-        throw new Error("Inbound address missing in the quote. Cannot execute swap.");
+        throw new Error("Inbound address missing in the quote.");
     }
 
-    const fromAsset = this.toXChainAsset(quote.inputAsset);
-    const amount = baseAmount(quote.inputAmountCryptoPrecision, this.getAssetDecimals(fromAsset, quote.inputAsset));
+    const fromAssetXChain = this.toXChainAsset(quote.inputAsset);
+    const fromAssetDecimals = this.getAssetDecimals(fromAssetXChain, quote.inputAsset);
+    const amount = baseAmount(quote.inputAmountCryptoPrecision, fromAssetDecimals);
 
-    // Handle ERC20 Approvals for Ethereum chain
-    if (fromAsset.chain === Chain.Ethereum && quote.inputAsset.contractAddress) {
-        if (!this.ethClient) {
-            throw new Error("Ethereum client not initialized. Call setEvmSigner first.");
-        }
-        // The spender for THORChain swaps is typically the router contract address,
-        // which might be different from the inboundAddress.
-        // For simplicity, quote.router is often the THORChain EVM router.
-        // If quote.router is not available, inboundAddress might be used, but this needs verification per THORChain docs for ERC20s.
-        const spender = quote.router || quote.inboundAddress;
+    const activeClient = this.getClientForChain(fromAssetXChain.chain);
+    if (!activeClient) {
+      throw new Error(`No wallet client found for chain ${fromAssetXChain.chain}. Please connect the appropriate wallet.`);
+    }
+
+    // Handle ERC20 Approvals for EVM chains
+    if ((fromAssetXChain.chain === Chain.Ethereum || fromAssetXChain.chain === Chain.Avalanche || fromAssetXChain.chain === Chain.BinanceSmartChain)
+        && quote.inputAsset.contractAddress) {
+
+        const spender = quote.router || quote.inboundAddress; // Router is preferred if available
         if (!spender) {
             throw new Error("Spender address for ERC20 approval not found in quote.");
         }
@@ -267,25 +321,18 @@ export class ThorchainService {
             quote.inputAsset,
             quote.inputAmountCryptoPrecision,
             spender,
-            userFromAddress
+            userFromAddress // This should be the EVM address from the activeClient/signer
         );
 
         if (!approvalResult.approved) {
             if (approvalResult.approveTxHash) {
-                // UI should inform user to wait for approval tx confirmation
-                throw new Error(`Approval required. Transaction hash: ${approvalResult.approveTxHash}. Please wait for confirmation and try again.`);
+                throw new Error(`Approval required for ${quote.inputAsset.symbol}. Transaction hash: ${approvalResult.approveTxHash}. Please wait for confirmation and try again.`);
             } else {
-                throw new Error(approvalResult.error || "ERC20 approval failed or was rejected.");
+                throw new Error(approvalResult.error || `ERC20 approval failed or was rejected for ${quote.inputAsset.symbol}.`);
             }
         }
         console.log(`${quote.inputAsset.symbol} is approved for swap.`);
     }
-
-    // Ensure ThorchainAMM has the necessary client for the input asset's chain
-    if (fromAsset.chain === Chain.Ethereum && !this.ethClient) {
-        throw new Error("Ethereum client not configured in ThorchainService for swap.");
-    }
-    // TODO: Add checks and client configurations for other chains (BTC, BNB, etc.) as they are supported.
 
     try {
       const params: EstimateSwapParams = {
@@ -406,6 +453,69 @@ export class ThorchainService {
   //   // Use thorchainQuery or other methods to track status
   // }
 
+  public async getAvailableAssets(): Promise<SimpleAsset[]> {
+    try {
+      const pools = await this.thorchainQuery.getPools();
+      const assets: SimpleAsset[] = [];
+      const addedSymbols: Set<string> = new Set(); // To avoid duplicates if pools list them multiple times
+
+      for (const pool of pools) {
+        if (pool.asset) {
+          const xchainAsset = assetFromString(pool.asset); // pool.asset is string like "ETH.ETH"
+          if (xchainAsset) {
+            if (!addedSymbols.has(xchainAsset.symbol)) {
+              // Attempt to get decimals - this is crucial and needs a reliable source
+              // For now, using the existing helper, but it might need enhancement
+              // or we fetch a separate token list that includes decimals.
+              // THORChain itself often assumes 8 decimals for its internal math,
+              // but for UI and client-side operations, true decimals are needed.
+              // TODO: Enhance decimal fetching for listed assets.
+              const decimals = this.getAssetDecimals(xchainAsset); // This might be a rough guess
+
+ თვით              // Try to extract contract address if it's an ERC20 token
+              let contractAddress: string | undefined = undefined;
+              if (xchainAsset.chain === Chain.Ethereum || xchainAsset.chain === Chain.Avalanche || xchainAsset.chain === Chain.BinanceSmartChain) {
+                if (xchainAsset.symbol.includes('-') && xchainAsset.ticker.toUpperCase() !== xchainAsset.chain) { // Basic check for ERC20 like SYMBOL-ADDRESS
+                  contractAddress = xchainAsset.symbol.substring(xchainAsset.ticker.length + 1);
+                }
+              }
+
+              assets.push({
+                chain: xchainAsset.chain,
+                ticker: xchainAsset.ticker,
+                symbol: xchainAsset.symbol, // Full XChain asset string
+                name: `${xchainAsset.ticker} (${xchainAsset.chain})`, // Simple name for now
+                contractAddress: contractAddress,
+                decimals: decimals, // Placeholder, needs to be accurate
+                source: 'thorchain',
+                // iconUrl: Figure out how to get icon URLs, maybe map common tickers
+              });
+              addedSymbols.add(xchainAsset.symbol);
+            }
+          }
+        }
+        // THORChain RUNE is also an asset
+        const runeAsset = assetFromString('THOR.RUNE');
+        if (runeAsset && !addedSymbols.has(runeAsset.symbol)) {
+            assets.push({
+                chain: runeAsset.chain,
+                ticker: runeAsset.ticker,
+                symbol: runeAsset.symbol,
+                name: 'THORChain RUNE',
+                decimals: this.getAssetDecimals(runeAsset),
+                source: 'thorchain',
+            });
+            addedSymbols.add(runeAsset.symbol);
+        }
+      }
+      // Remove duplicates that might arise if RUNE is also in a pool's asset field
+      // The `addedSymbols` set already handles this.
+      return assets;
+    } catch (error) {
+      console.error('Failed to get available THORChain assets:', error);
+      return [];
+    }
+  }
 
   // Helper to convert SimpleAsset to XChain Asset
   private toXChainAsset(simpleAsset: SimpleAsset): Asset {
