@@ -41,17 +41,21 @@ export const ParticleAuthProvider: React.FC<{ children: ReactNode }> = ({ childr
       const initAuth = async () => {
         setIsLoadingAuth(true);
         try {
-          const user = particleGetUserInfo();
+          const user = particleGetUserInfo(); // This gets from Particle Auth SDK (social/email login)
           if (user) {
             setUserInfo(user);
-            // Check if already connected to a wallet (e.g. from previous session with Particle Connect)
-            // Particle Connect might manage its own connection persistence.
-            // For simplicity, we'll require explicit connect action for now.
-            // If Particle Connect auto-connects, this could be updated.
-            if (particleConnect.particle && particleConnect.particle.walletType) { // Check if a wallet is connected via Particle Connect
-                 const accounts = await particleConnect.request({ method: 'eth_accounts' });
-                 if (accounts && accounts.length > 0) {
-                    setWalletAccounts(accounts as Accounts);
+            // If user is logged in via Particle Auth, their embedded wallet is the primary one initially.
+            // Extract the EVM address from userInfo.wallets
+            const embeddedEvmWallet = user.wallets?.find(w => w.chain_name.toLowerCase() === 'evm_chain'); // Particle uses 'evm_chain' for generic EVM
+            if (embeddedEvmWallet) {
+              setWalletAccounts([embeddedEvmWallet.public_address]);
+            }
+
+            // Then, check if an external wallet is already connected via Particle Connect (e.g. persisted session)
+            if (particleConnect.particle && particleConnect.particle.walletType && particleConnect.particle.walletType !== 'particle') {
+                 const connectedExternalAccounts = await particleConnect.request({ method: 'eth_accounts' });
+                 if (connectedExternalAccounts && connectedExternalAccounts.length > 0) {
+                    setWalletAccounts(connectedExternalAccounts as Accounts);
                  }
             }
           }
@@ -68,21 +72,35 @@ export const ParticleAuthProvider: React.FC<{ children: ReactNode }> = ({ childr
 
   const login = async (authType: 'email' | 'google' | 'twitter' | 'discord' | 'github' | 'linkedin' | 'apple' | 'facebook') => {
     setIsLoadingAuth(true);
+    setWalletAccounts(null); // Reset wallet accounts on new login
     try {
       const user = await particleHandleLogin(authType);
       setUserInfo(user);
-      // After login, if using Particle's embedded wallet, it might be implicitly connected.
-      // Check and set walletAccounts if Particle provides this info post-login.
-      if (user && particleConnect.particle && particleConnect.particle.walletType === 'particle') {
-        const accounts = await particleConnect.request({ method: 'eth_accounts' });
-        if (accounts && accounts.length > 0) {
-           setWalletAccounts(accounts as Accounts);
+      if (user) {
+        // Upon social/email login, the embedded wallet is the default.
+        // Particle's UserInfo object has a `wallets` array.
+        // We should find the EVM compatible wallet address here.
+        // Example: { uuid: '...', token: '...', wallets: [{uuid:'...', chain_name:'evm_chain', public_address:'0x...'}] }
+        const embeddedEvmWallet = user.wallets?.find(w => w.chain_name.toLowerCase() === 'evm_chain');
+        if (embeddedEvmWallet) {
+          setWalletAccounts([embeddedEvmWallet.public_address]);
+        } else {
+          // Fallback or try to get from particleConnect if it auto-connects the 'particle' wallet type
+          const particleWalletAccounts = await particleConnect.request({ method: 'eth_accounts' });
+            if (particleWalletAccounts && particleWalletAccounts.length > 0 && particleConnect.particle?.walletType === 'particle') {
+                setWalletAccounts(particleWalletAccounts as Accounts);
+            } else {
+                console.warn("EVM wallet address not found in userInfo after login.");
+            }
         }
       }
       return user;
     } catch (error) {
+      console.error('Login failed in context:', error);
       setUserInfo(null);
       setWalletAccounts(null);
+      // Re-throw or handle error as needed by UI
+      throw error;
     } finally {
       setIsLoadingAuth(false);
     }
@@ -90,14 +108,20 @@ export const ParticleAuthProvider: React.FC<{ children: ReactNode }> = ({ childr
 
   const logout = async () => {
     setIsLoadingAuth(true);
-    setIsLoadingWallet(true); // Wallet actions might be affected
+    setIsLoadingWallet(true);
     try {
-      await particleDisconnectWallet(); // Disconnect wallet first
-      await particleHandleLogout();   // Then logout from Particle Auth
+      // Attempt to disconnect any external wallet first
+      if (particleConnect.particle && particleConnect.particle.walletType && particleConnect.particle.walletType !== 'particle') {
+        await particleDisconnectWallet();
+      }
+      await particleHandleLogout(); // Logout from Particle Auth (social/email)
       setUserInfo(null);
       setWalletAccounts(null);
     } catch (error) {
-      // Error logged in handlers
+      console.error('Logout failed in context:', error);
+      // Still reset state even if one part of logout fails
+      setUserInfo(null);
+      setWalletAccounts(null);
     } finally {
       setIsLoadingAuth(false);
       setIsLoadingWallet(false);
@@ -105,18 +129,36 @@ export const ParticleAuthProvider: React.FC<{ children: ReactNode }> = ({ childr
   };
 
   const connectWallet = async (preferredWalletType?: 'particle' | 'metaMask' | 'walletconnect') => {
-    if (!userInfo) {
-        // Optionally, could trigger login here or show a message
-        console.warn("User not logged in. Please login before connecting a wallet.");
-        // return null; // Or throw an error, or trigger login UI
+    // If user is not logged in via Particle Auth, connecting an external wallet doesn't require Particle Auth login.
+    // Particle Connect can work independently for external wallets.
+    // However, our app flow might prefer user to be "logged in" to the app first.
+    // For now, this allows connecting external wallet even if not Particle Auth logged in.
+    // If `preferredWalletType === 'particle'`, it implies using the embedded wallet, which requires Particle Auth login.
+
+    if (preferredWalletType === 'particle' && !userInfo) {
+        console.warn("Particle wallet type selected, but user is not logged in via Particle Auth. Please login first.");
+        // Could trigger login UI here.
+        return null;
     }
+
     setIsLoadingWallet(true);
     try {
+      // `particleConnectWallet` from lib/particle.ts handles the actual connection logic
       const accounts = await particleConnectWallet(preferredWalletType);
-      setWalletAccounts(accounts || null); // Ensure it's null if undefined
+      setWalletAccounts(accounts || null);
+      // If connecting the 'particle' wallet type successfully, and userInfo is present,
+      // ensure consistency or update userInfo if needed (though connect usually doesn't return full UserInfo)
+      if (preferredWalletType === 'particle' && userInfo && accounts && accounts.length > 0) {
+        const embeddedEvmWallet = userInfo.wallets?.find(w => w.chain_name.toLowerCase() === 'evm_chain');
+        if (!embeddedEvmWallet || embeddedEvmWallet.public_address !== accounts[0]) {
+            console.warn("Particle wallet connected, but address differs from userInfo.wallets. Prioritizing connect() result.");
+        }
+      }
       return accounts;
     } catch (error) {
+      console.error('Connect wallet failed in context:', error);
       setWalletAccounts(null);
+      throw error;
     } finally {
       setIsLoadingWallet(false);
     }
@@ -125,22 +167,31 @@ export const ParticleAuthProvider: React.FC<{ children: ReactNode }> = ({ childr
   const disconnectWallet = async () => {
     setIsLoadingWallet(true);
     try {
-      await particleDisconnectWallet();
+      await particleDisconnectWallet(); // This disconnects external wallets via Particle Connect
+      // If the currently active wallet was the embedded Particle wallet, logging out is the way to "disconnect" it.
+      // So, if walletAccounts points to an embedded wallet, we might just clear it here,
+      // or rely on logout to clear it. For simplicity, clearing it here.
+      if (userInfo && walletAccounts && userInfo.wallets?.some(w => w.public_address === walletAccounts[0])) {
+        // This was an embedded wallet. The actual "disconnection" is logout.
+        // For now, just clearing the local state. Logout will do the full clear.
+      }
       setWalletAccounts(null);
     } catch (error) {
-      // Error logged in handler
+      console.error('Disconnect wallet failed in context:', error);
     } finally {
       setIsLoadingWallet(false);
     }
   };
 
   const openWallet = () => {
-      if (userInfo && walletAccounts) { // Only open if logged in and wallet connected
-          particleOpenWallet();
-      } else {
-          console.warn("User not logged in or wallet not connected. Cannot open wallet UI.");
-          // Optionally trigger login/connect here
-      }
+    // Open Particle Wallet UI. This works if user is logged in (for embedded wallet)
+    // or if an external wallet is connected through Particle Connect's adapter.
+    if (userInfo || (particleConnect.particle && particleConnect.particle.walletType)) {
+        particleOpenWallet();
+    } else {
+        console.warn("Cannot open wallet UI. User not logged in and no external wallet connected via Particle.");
+        // Optionally trigger login/connect here
+    }
   };
 
   return (
