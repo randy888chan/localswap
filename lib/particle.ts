@@ -1,29 +1,45 @@
 import { ParticleAuth } from '@particle-network/auth';
 import { ParticleConnect } from '@particle-network/connect';
-import { EthereumGoerli } from '@particle-network/chains';
+import { Ethereum, BNBChain, Polygon, Avalanche, ArbitrumOne, EthereumGoerli } from '@particle-network/chains';
 
-// TODO: User needs to replace these with their actual Particle Network project credentials
-const PARTICLE_PROJECT_ID = process.env.NEXT_PUBLIC_PARTICLE_PROJECT_ID || 'YOUR_PARTICLE_PROJECT_ID';
-const PARTICLE_CLIENT_KEY = process.env.NEXT_PUBLIC_PARTICLE_CLIENT_KEY || 'YOUR_PARTICLE_CLIENT_KEY';
-const PARTICLE_APP_ID = process.env.NEXT_PUBLIC_PARTICLE_APP_ID || 'YOUR_PARTICLE_APP_ID';
+// Ensure these environment variables are set in your .env.local file
+const PARTICLE_PROJECT_ID = process.env.NEXT_PUBLIC_PARTICLE_PROJECT_ID;
+const PARTICLE_CLIENT_KEY = process.env.NEXT_PUBLIC_PARTICLE_CLIENT_KEY;
+const PARTICLE_APP_ID = process.env.NEXT_PUBLIC_PARTICLE_APP_ID;
+
+if (!PARTICLE_PROJECT_ID || !PARTICLE_CLIENT_KEY || !PARTICLE_APP_ID) {
+  console.error("Particle Network environment variables are not set!");
+  // Potentially throw an error or use fallback placeholder values if in a non-production environment for basic UI rendering
+  // For now, this will allow the code to run but Particle SDK will likely fail or use default test values if it has any.
+}
 
 const particleCommonConfig = {
-  projectId: PARTICLE_PROJECT_ID,
-  clientKey: PARTICLE_CLIENT_KEY,
-  appId: PARTICLE_APP_ID,
+  projectId: PARTICLE_PROJECT_ID!, // Use non-null assertion operator as we've checked
+  clientKey: PARTICLE_CLIENT_KEY!,
+  appId: PARTICLE_APP_ID!,
 };
 
 export const particleAuth = new ParticleAuth(particleCommonConfig);
 
+// Define the chains to be supported in the Particle Wallet UI
+const supportedChains = [
+  Ethereum,
+  BNBChain,
+  Polygon,
+  Avalanche,
+  ArbitrumOne,
+  EthereumGoerli // Keep Goerli for testing if needed
+];
+
 export const particleConnect = new ParticleConnect({
   ...particleCommonConfig,
-  chainName: EthereumGoerli.name, // Default chain for connect, can be different or dynamic
-  chainId: EthereumGoerli.id,
+  chainName: Ethereum.name, // Default to Ethereum Mainnet
+  chainId: Ethereum.id,
   wallet: { // Optional: Wallet UI configuration for Particle Connect
     displayWalletEntry: true,
     defaultWalletEntryPosition: 'bottom-right',
     uiMode: 'dark', // or 'light'
-    supportChains: [{ id: EthereumGoerli.id, name: EthereumGoerli.name }], // Example
+    supportChains: supportedChains.map(chain => ({ id: chain.id, name: chain.name })),
     customStyle: {}, // Optional: further customize UI
   }
 });
@@ -121,9 +137,41 @@ export const openAccountSwitchModal = () => {
 
 // Example of how one might get an ethers provider (if Particle Connect supports it this way)
 // import { ethers } from 'ethers';
+import { ethers } from 'ethers';
+
 // export const getEthersProvider = () => {
 //   if (particleConnect.provider) {
 //     return new ethers.providers.Web3Provider(particleConnect.provider, "any");
 //   }
 //   return null;
 // }
+
+export const getEthersSigner = async (): Promise<ethers.Signer | null> => {
+  if (particleConnect.provider) {
+    try {
+      const provider = new ethers.providers.Web3Provider(particleConnect.provider, "any");
+      const signer = provider.getSigner();
+      // Check if signer is available
+      await signer.getAddress(); // This will throw an error if no account is available
+      return signer;
+    } catch (error) {
+      console.error("Error getting ethers signer:", error);
+      return null;
+    }
+  }
+  console.warn("Particle connect provider not available.");
+  return null;
+};
+
+export const getEthersProvider = (): ethers.providers.Web3Provider | null => {
+  if (particleConnect.provider) {
+    try {
+      return new ethers.providers.Web3Provider(particleConnect.provider, "any");
+    } catch (error) {
+      console.error("Error getting ethers provider:", error);
+      return null;
+    }
+  }
+  console.warn("Particle connect provider not available.");
+  return null;
+};
