@@ -1,0 +1,140 @@
+name: Build, Test, and Deploy
+
+on:
+  push:
+    branches:
+      - main # Deploy production on push to main
+      - staging # Deploy staging on push to staging
+  pull_request:
+    branches:
+      - main
+      - staging
+
+jobs:
+  build_and_test:
+    runs-on: ubuntu-latest
+    outputs:
+      next_build_success: ${{ steps.build-next.outcome == 'success' }}
+      worker_build_success: ${{ steps.build-worker.outcome == 'success' }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm' # or 'pnpm' or 'yarn'
+
+    - name: Install dependencies
+      run: npm install # or pnpm install / yarn install
+
+    - name: Lint code
+      run: npm run lint # Assuming a lint script exists in package.json (e.g., eslint .)
+
+    - name: Run unit tests
+      run: npm run test # Assuming this runs Vitest
+
+    - name: Build Next.js app
+      id: build-next
+      run: npm run build # Assuming this runs `next build`
+
+    - name: Build Cloudflare Worker(s)
+      id: build-worker
+      # This script should build workers defined in wrangler.toml (e.g., src/server.ts, workers/*)
+      # Example: npm run build:worker (ensure this script exists in package.json)
+      run: |
+        if [ -f "wrangler.toml" ]; then
+          npm run build:worker || echo "Worker build script failed or not configured"
+        else
+          echo "wrangler.toml not found, skipping worker build."
+        fi
+
+
+  deploy_staging:
+    needs: build_and_test
+    if: github.ref == 'refs/heads/staging' && needs.build_and_test.outputs.next_build_success == 'true'
+    runs-on: ubuntu-latest
+    environment: staging
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm install
+
+    - name: Build Next.js app (for Pages deployment)
+      run: npm run build # Ensures static assets are ready for Cloudflare Pages
+
+    - name: Deploy Next.js app to Cloudflare Pages (Staging)
+      uses: cloudflare/pages-action@v1
+      with:
+        apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        projectName: "your-cf-pages-project-name-staging" # Replace with your Cloudflare Pages project name for staging
+        directory: ".next" # Or 'out/' if using static export, adjust as per your Next.js build output
+        # branch: 'staging' # Usually not needed if action is triggered on staging branch push
+
+    - name: Install Wrangler CLI
+      run: npm install -g wrangler
+
+    - name: Deploy Cloudflare Worker(s) (Staging)
+      if: needs.build_and_test.outputs.worker_build_success == 'true' && steps.build-worker.outcome == 'success' # Check if worker build was intended and successful
+      env:
+        CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        # Pass other secrets needed by wrangler.toml vars if they are not set in CF dashboard
+        # For example, if wrangler.toml has VAR_X = "@gh_secret_var_x" syntax or relies on env directly
+        # VAR_X: ${{ secrets.STAGING_VAR_X }}
+      run: wrangler deploy --env staging # Deploys workers defined in wrangler.toml to the 'staging' environment
+
+
+  deploy_production:
+    needs: build_and_test
+    if: github.ref == 'refs/heads/main' && needs.build_and_test.outputs.next_build_success == 'true'
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm install
+
+    - name: Build Next.js app (for Pages deployment)
+      run: npm run build
+
+    - name: Deploy Next.js app to Cloudflare Pages (Production)
+      uses: cloudflare/pages-action@v1
+      with:
+        apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        projectName: "your-cf-pages-project-name-production" # Replace with your Cloudflare Pages project name for production
+        directory: ".next" # Or 'out/'
+        # branch: 'main'
+
+    - name: Install Wrangler CLI
+      run: npm install -g wrangler
+
+    - name: Deploy Cloudflare Worker(s) (Production)
+      if: needs.build_and_test.outputs.worker_build_success == 'true' && steps.build-worker.outcome == 'success'
+      env:
+        CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        # VAR_X: ${{ secrets.PRODUCTION_VAR_X }}
+      run: wrangler deploy --env production # Deploys workers to 'production' environment

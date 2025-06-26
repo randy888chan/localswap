@@ -75,18 +75,29 @@ export class ZetaChainService {
       // and how the toolkit expects connected chain info.
       // The toolkit's examples often show direct use with window.ethereum.
       // We are adapting it to use the signer from Particle Network.
-      const zetaNetwork = process.env.NEXT_PUBLIC_ZETACHAIN_NETWORK === 'mainnet' ? 'mainnet' : 'testnet';
+      const zetaChainApi = process.env.NEXT_PUBLIC_ZETACHAIN_NETWORK === 'mainnet' ? 'api-mainnet' : 'api-testnet';
+      // const zetaNetwork = process.env.NEXT_PUBLIC_ZETACHAIN_NETWORK === 'mainnet' ? 'mainnet' : 'testnet';
+
       const params: ZetaChainClientParams = {
-        network: zetaNetwork, // "mainnet" or "testnet" (for ZetaChain network itself)
+        // network: zetaNetwork, // "mainnet" or "testnet" (for ZetaChain network itself)
         // The 'chains' config here is for ZetaChain's understanding of connected chains.
         // It might not be directly derived from the signer for all chains.
         // This part needs careful review of @zetachain/toolkit documentation for use with an arbitrary EIP-1193 signer.
         // For now, assuming a basic setup.
+        chains: { // This structure might be necessary for the client to know about connected chains
+            // Example: Hardcoding for Goerli if signer is on Goerli for deposits
+            // This needs to be dynamic or correctly configured based on actual connected chain.
+            // For calls originating from ZetaChain (like ZRC20 swap or CCTX send), this might be less critical
+            // than for deposits *to* ZetaChain.
+            // Referring to toolkit, it seems to infer from signer if possible for EVM.
+        },
         signer: this.evmSigner, // Pass the ethers v5 signer
+        api: zetaChainApi,
       };
 
       this.client = new ZetaChainClient(params);
-      console.log("ZetaChainClient initialized successfully for testnet.");
+      // For testnet, the log message should be more dynamic or reflect the actual config
+      console.log(`ZetaChainClient initialized successfully for ${process.env.NEXT_PUBLIC_ZETACHAIN_NETWORK || 'default (testnet)'}.`);
       // You can call client.getBalances() or other methods here to verify.
       return true;
     } catch (error) {
@@ -510,87 +521,93 @@ export class ZetaChainService {
       // and the specific function used for sending messages with value.
 
       // 1. ZetaChain System Contract Address (needs to be identified from ZetaChain docs for the target network)
-      const ZETA_SYSTEM_CONTRACT_ADDRESS = "0xReplaceWithActualZetaSystemContractAddress"; // Placeholder
-      if (ZETA_SYSTEM_CONTRACT_ADDRESS === "0xReplaceWithActualZetaSystemContractAddress") {
-        console.error("ZetaChain System Contract Address for CCTX is not defined in ZetaChainService.");
-        throw new Error("System contract address for CCTX not configured.");
-      }
+      const zetaNetwork = process.env.NEXT_PUBLIC_ZETACHAIN_NETWORK === 'mainnet' ? 'mainnet' : 'testnet';
 
-      // 2. Method Signature on the System Contract
-      // This is also hypothetical. Example: `callRemote(uint256 targetChainId, address targetContract, uint256 gasOnTarget, bytes message, uint256 zrc20ZetaValue, address zrc20ZetaAsset)`
-      const CCTX_METHOD_SIGNATURE = "callRemote(uint256,address,uint256,bytes,uint256,address)"; // Placeholder
-      // Or it might be simpler like: `sendMessageWithValue(uint256 destinationChainId, address destinationContract, bytes message, uint256 zrc20Value)`
+      // Get GatewayZEVM address based on network
+      const gatewayAddress = zetaNetwork === 'mainnet'
+        ? "0xfEDD7A6e3Ef1cC470fbfbF955a22D793dDC0F44E" // Mainnet GatewayZEVM
+        : "0x6c533f7fe93fae114d0954697069df33c9b74fd7"; // Testnet GatewayZEVM (Athens 3)
 
-      // 3. ZRC-20 ZETA Contract Address (if sending ZETA value)
-      // This should be the ZRC-20 representation of ZETA on ZetaChain.
-      // It might be fetched via `this.client.getZRC20GasToken()` or a similar method, or be a known constant.
-      let zrc20ZetaAddress = "0xReplaceWithActualZRC20ZetaAddress"; // Placeholder
-      try {
-        const gasToken = await this.client.getZRC20GasToken(); // Attempt to get it dynamically
-        if (gasToken && gasToken.zrc20_contract_address) {
-            zrc20ZetaAddress = gasToken.zrc20_contract_address;
-        } else if (ZETA_SYSTEM_CONTRACT_ADDRESS === "0xReplaceWithActualZetaSystemContractAddress") { // Only throw if system contract is also placeholder
-            console.warn("Could not dynamically fetch ZRC20 ZETA address, using placeholder. This will likely fail.");
+      // Get ZRC20 ZETA (wZETA) address - this is the token used to pay for the 'amount' being sent
+      const zrc20ZetaToken = await this.client.getZRC20GasToken(); // This should give the wZETA ZRC20
+      if (!zrc20ZetaToken || !zrc20ZetaToken.zrc20_contract_address) {
+          console.error("Could not fetch ZRC20 ZETA token address (wZETA).");
+          throw new Error("Could not fetch ZRC20 ZETA token address (wZETA).");
         }
-      } catch (e) {
-        console.warn("Failed to fetch ZRC20 ZETA address dynamically, ensure it's set if needed.", e);
+      const wZetaAddress = zrc20ZetaToken.zrc20_contract_address;
+      const wZetaDecimals = zrc20ZetaToken.decimals || 18; // Assume 18 if not provided
+
+      const amountToSendCrypto = parseUnits(zetaAmountToSendAsValueHumanReadable, wZetaDecimals);
+
+      // 1. Approve GatewayZEVM to spend user's wZETA if amount > 0
+      if (amountToSendCrypto.gt(0)) {
+        console.log(`Approving ${zetaAmountToSendAsValueHumanReadable} wZETA (${wZetaAddress}) for GatewayZEVM ${gatewayAddress}`);
+        const approveParams: ApproveTokenParams = {
+            tokenAddress: wZetaAddress,
+            spenderAddress: gatewayAddress,
+            amount: amountToSendCrypto.toString(),
+        };
+
+        if (typeof this.client.approveToken === 'function') {
+            const approveTxResponse = await this.client.approveToken(approveParams);
+            console.log(`WZETA approval transaction submitted: ${approveTxResponse.hash}, waiting for confirmation...`);
+            await approveTxResponse.wait();
+            console.log(`WZETA approved for GatewayZEVM: ${gatewayAddress}.`);
+        } else {
+            console.warn("client.approveToken not found, attempting manual ethers.js approval for wZETA.");
+            const wzetaContractInstance = new Contract(wZetaAddress, ERC20_ABI_MINIMAL_APPROVE, this.evmSigner);
+            const approveTx = await wzetaContractInstance.approve(gatewayAddress, amountToSendCrypto);
+            console.log(`Manual wZETA approval transaction submitted: ${approveTx.hash}, waiting for confirmation...`);
+            await approveTx.wait();
+            console.log(`WZETA approved (manual) for GatewayZEVM: ${gatewayAddress}.`);
+        }
       }
 
 
-      // 4. Prepare Arguments for the System Contract Call
-      const zetaZrc20Decimals = 18; // Assume ZRC-20 ZETA has 18 decimals. Verify this.
-      const zrc20ZetaValueToSendCrypto = parseUnits(zetaAmountToSendAsValueHumanReadable, zetaZrc20Decimals);
+      // 2. Prepare parameters for GatewayZEVM.withdrawAndCall
+      // The method signature for GatewayZEVM.withdrawAndCall (for ZETA/WZETA):
+      // withdrawAndCall(bytes memory receiver, uint256 amount, uint256 chainId, bytes calldata message, CallOptions calldata callOptions, RevertOptions calldata revertOptions)
 
-      // The `gasLimitForRemoteCall` is crucial. It's the gas to be provided for the transaction on the *destination* chain.
-      // It needs to be estimated or set sufficiently high.
-      const remoteGas = gasLimitForRemoteCall || "500000"; // Default to a generous gas limit for the remote call
+      const callOptions = {
+        gasLimit: gasLimitForRemoteCall, // Gas for the remote execution on destination chain
+        isArbitraryCall: true // True if the message is arbitrary calldata for a contract
+      };
 
-      // The `processingFeeAmountHumanReadable` is for ZetaChain's network processing.
-      // This might be sent as part of the `value` field in `SendParams` if it's native ZETA,
-      // or as an argument to the system contract if it's paid in ZRC-20 ZETA.
-      // The exact mechanism needs to be verified. For now, let's assume it's handled as part of system contract args or overall value.
-      // The `this.client.getFees()` might be relevant here to estimate this.
+      // Simplified RevertOptions: sending revert destination to the caller on ZetaChain, no value/gas on revert by default
+      const callerAddressOnZetaChain = await this.evmSigner.getAddress(); // This is the EOA calling this service method
+      const revertOptions = {
+        revertAddress: ethers.utils.arrayify(callerAddressOnZetaChain), // Revert to caller on ZetaChain (must be bytes)
+        callGasLimit: "0", // Gas for revert call (if any)
+        value: "0",        // Value with revert call
+        zrc20: ethers.constants.AddressZero // ZRC20 for revert value (if any)
+      };
 
-      const systemContractArgs = [
-        destinationChainId.toString(),    // e.g., targetChainId (uint256)
-        destinationContractAddress,       // e.g., targetContract (address)
-        remoteGas,                        // e.g., gasOnTarget (uint256)
-        encodedFunctionCallData,          // e.g., message (bytes)
-        zrc20ZetaValueToSendCrypto.toString(), // e.g., zrc20ZetaValue (uint256)
-        zrc20ZetaAddress                  // e.g., zrc20ZetaAsset (address) - if required by the contract method
-      ];
-      // Note: The order and types of `systemContractArgs` MUST match `CCTX_METHOD_SIGNATURE`.
+      // destinationContractAddress needs to be in bytes format for the 'receiver' parameter
+      const destinationContractAddressBytes = ethers.utils.arrayify(destinationContractAddress);
 
-      // 5. Construct SendParams for `this.client.send()`
-      const sendParams: SendParams = {
-        contract: ZETA_SYSTEM_CONTRACT_ADDRESS,
-        method: CCTX_METHOD_SIGNATURE,
-        args: systemContractArgs,
-        value: "0", // Native ZETA value sent to the system contract. If fees or value are ZRC20, this is often 0.
-                    // If ZetaChain processing fees are paid in native ZETA, this `value` field would be used.
+
+      const sendTxParams: SendParams = {
+        contract: gatewayAddress, // Address of GatewayZEVM
+        method: 'withdrawAndCall(bytes,uint256,uint256,bytes,(uint256,bool),(bytes,uint256,uint256,address))',
+        args: [
+          destinationContractAddressBytes, // receiver (bytes)
+          amountToSendCrypto.toString(),   // amount of wZETA (uint256)
+          destinationChainId.toString(),   // chainId of destination (uint256)
+          encodedFunctionCallData,         // message (bytes) - your encoded function call
+          callOptions,                     // CallOptions (tuple)
+          revertOptions                    // RevertOptions (tuple)
+        ],
+        value: "0", // Native ZETA sent to GatewayZEVM itself (usually 0, as WZETA is transferred via approve/transferFrom)
         txOptions: {
-          // gasLimit, gasPrice/maxFeePerGas for the ZetaChain transaction itself (not the remote call)
-          // This should be estimated or set appropriately.
+          // gasLimit: "500000" // Optional: Gas for the ZetaChain transaction itself (executing withdrawAndCall)
         },
       };
 
-      console.log("Attempting ZetaChain callRemoteContractWithMessage with SendParams:", JSON.stringify(sendParams, null, 2));
-      console.warn(
-        "callRemoteContractWithMessage: This is a conceptual outline. " +
-        "The ZETA_SYSTEM_CONTRACT_ADDRESS, CCTX_METHOD_SIGNATURE, zrc20ZetaAddress, " +
-        "and exact argument structure for the system contract call are CRITICAL and need to be " +
-        "verified from official ZetaChain documentation for the target network (Mainnet/Testnet)."
-      );
+      console.log("Calling GatewayZEVM.withdrawAndCall with SendParams:", JSON.stringify(sendTxParams, null, 2));
 
-      // Uncomment and test when actual contract details are known:
-      // const tx = await this.client.send(sendParams);
-      // console.log(`CCTX initiated via callRemoteContractWithMessage. ZetaChain Tx Hash: ${tx.hash}`);
-      // return tx.hash; // This would be the hash of the transaction on ZetaChain that initiates the CCTX
-
-      throw new Error(
-        "callRemoteContractWithMessage is a conceptual outline and not fully implemented. " +
-        "Requires specific ZetaChain system contract details (address, ABI method) and ZRC20 ZETA address."
-      );
+      const tx = await this.client.send(sendTxParams);
+      console.log(`CCTX initiated via GatewayZEVM.withdrawAndCall. ZetaChain Tx Hash: ${tx.hash}`);
+      return tx.hash;
 
     } catch (error: any) {
       console.error("Error in callRemoteContractWithMessage:", error);
