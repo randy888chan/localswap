@@ -234,7 +234,62 @@ describe('ThorchainService', () => {
     });
   });
 
-  // TODO: Add tests for checkAndRequestApproval (needs EthClient mock methods like isApproved, approve)
+  describe('checkAndRequestApproval', () => {
+    const mockAsset: SimpleAsset = { chain: Chain.Ethereum, symbol: 'ETH.USDT-0x...', ticker: 'USDT', contractAddress: '0x...', decimals: 6 };
+    const mockAmountCryptoPrecision = '1000000'; // 1 USDT with 6 decimals
+    const mockSpenderAddress = '0xSpender';
+    const mockWalletAddress = '0xWallet';
+    let ethClientMock: EthClient;
+
+    beforeEach(async () => {
+      // Setup EthClient mock for these specific tests
+      ethClientMock = new EthClient({ network: Network.Testnet, phrase: 'test' }) as any; // Cast to allow mocking internals
+      vi.spyOn(ethClientMock, 'isApproved').mockResolvedValue(false);
+      vi.spyOn(ethClientMock, 'approve').mockResolvedValue('mockApproveTxHash_approve');
+
+      await service.setEvmSigner(mockSigner, mockProvider, Chain.Ethereum);
+      // Replace the client set by setEvmSigner with our more controlled mock instance
+      (service as any).clients.set(Chain.Ethereum, ethClientMock);
+      service['thorchainAmm']['clients'][Chain.Ethereum as any] = ethClientMock; // Also update AMM's client ref
+    });
+
+    it('should return approved: true if asset has no contract address (native asset)', async () => {
+      const nativeAsset: SimpleAsset = { chain: Chain.Ethereum, symbol: 'ETH.ETH', ticker: 'ETH', decimals: 18 };
+      const result = await service.checkAndRequestApproval(nativeAsset, '100', mockSpenderAddress, mockWalletAddress);
+      expect(result.approved).toBe(true);
+    });
+
+    it('should return approved: true if ethClient.isApproved returns true', async () => {
+      vi.spyOn(ethClientMock, 'isApproved').mockResolvedValue(true);
+      const result = await service.checkAndRequestApproval(mockAsset, mockAmountCryptoPrecision, mockSpenderAddress, mockWalletAddress);
+      expect(result.approved).toBe(true);
+      expect(ethClientMock.approve).not.toHaveBeenCalled();
+    });
+
+    it('should call ethClient.approve and return approved: false with txHash if not approved', async () => {
+      vi.spyOn(ethClientMock, 'isApproved').mockResolvedValue(false);
+      const result = await service.checkAndRequestApproval(mockAsset, mockAmountCryptoPrecision, mockSpenderAddress, mockWalletAddress);
+      expect(result.approved).toBe(false);
+      expect(result.approveTxHash).toBe('mockApproveTxHash_approve');
+      expect(ethClientMock.approve).toHaveBeenCalled();
+    });
+
+    it('should return error if ethClient.isApproved throws', async () => {
+      vi.spyOn(ethClientMock, 'isApproved').mockRejectedValue(new Error('isApproved failed'));
+      const result = await service.checkAndRequestApproval(mockAsset, mockAmountCryptoPrecision, mockSpenderAddress, mockWalletAddress);
+      expect(result.approved).toBe(false);
+      expect(result.error).toBe('isApproved failed');
+    });
+
+    it('should return error if ethClient.approve throws', async () => {
+      vi.spyOn(ethClientMock, 'isApproved').mockResolvedValue(false);
+      vi.spyOn(ethClientMock, 'approve').mockRejectedValue(new Error('approve failed'));
+      const result = await service.checkAndRequestApproval(mockAsset, mockAmountCryptoPrecision, mockSpenderAddress, mockWalletAddress);
+      expect(result.approved).toBe(false);
+      expect(result.error).toBe('approve failed');
+    });
+  });
+
   // TODO: Add tests for executeSwap (more complex, needs client mocks for doSwap, potentially approval flows)
   // TODO: Add tests for getTransactionStatusAndDetails (mocking Midgard responses)
 

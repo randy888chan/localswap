@@ -133,12 +133,16 @@ export class ThorchainService {
             if (asset.symbol === 'ETH' && asset.chain === Chain.Ethereum) return 18;
             if (asset.symbol === 'AVAX' && asset.chain === Chain.Avalanche) return 18;
             if (asset.symbol === 'BNB' && asset.chain === Chain.BinanceSmartChain) return 18;
-            // For ERC20s, decimals MUST be known. XChainJS assets for ERC20s
-            // usually don't embed decimals directly in the string.
-            // This is a critical point: a separate token list or API is needed for ERC20 decimals.
-            // Defaulting here is dangerous.
-            console.warn(`Attempting to get decimals for ERC20/token ${asset.symbol} on ${asset.chain} without SimpleAsset.decimals. This is unreliable.`);
-            return 18; // Highly likely to be incorrect for many tokens if not the native one.
+
+            // For ERC20s, decimals MUST be known via SimpleAsset.
+            // If simpleAsset.decimals is undefined here for a token, it's an issue.
+            if (asset.symbol.includes('-')) { // Basic check for token (e.g., ETH.USDT-0x...)
+                 console.error(`Decimals for token ${asset.symbol} on ${asset.chain} must be provided via SimpleAsset.decimals. Cannot guess.`);
+                 return undefined; // Force explicit handling by caller
+            }
+            // If it's not a token (e.g. native asset of a chain we haven't listed above but is EVM compatible)
+            console.warn(`Decimals for native-like asset ${asset.symbol} on EVM chain ${asset.chain} not explicitly defined, defaulting to 18. This might be incorrect if it's not the primary gas token.`);
+            return 18; // Default for other native EVM gas assets.
         case Chain.Cosmos: // ATOM
             return 6;
         case Chain.THORChain: // RUNE
@@ -169,7 +173,14 @@ export class ThorchainService {
       }
 
       const inputDecimals = this.getAssetDecimals(fromAsset, inputAsset);
+      if (inputDecimals === undefined) {
+        throw new Error(`Decimals for input asset ${inputAsset.symbol} are unknown. Cannot get quote.`);
+      }
       const outputDecimals = this.getAssetDecimals(toAsset, outputAsset);
+      if (outputDecimals === undefined) {
+        // Stricter: if we don't know output decimals, we can't reliably format the quote for the user.
+        throw new Error(`Decimals for output asset ${outputAsset.symbol} are unknown. Cannot reliably process quote.`);
+      }
 
       // Convert human-readable input amount to base amount (1e8 for THORChain quote)
       // Note: quoteSwap expects amount in 1e8 precision regardless of the asset's actual decimals.
@@ -196,14 +207,20 @@ export class ThorchainService {
         return null;
       }
 
-      const feeAsset = assetFromString(quote.fees.asset.symbol); // quote.fees.asset is already an Asset
-      if(!feeAsset) throw new Error(`Unknown fee asset: ${quote.fees.asset.symbol}`);
-      const feeDecimals = this.getAssetDecimals(feeAsset); // Assuming fee asset might have different decimals
+      // quote.fees.asset is already an Asset. We need its decimals.
+      // Let's assume the fee asset is simple enough that its decimals are known by getAssetDecimals fallback or it's native.
+      // If fee asset decimals are critical and could be complex tokens, this needs a robust way to get them.
+      const feeAssetXChain = quote.fees.asset;
+      const feeDecimals = this.getAssetDecimals(feeAssetXChain);
+      if (feeDecimals === undefined) {
+        // This is critical. If we can't determine fee decimals, we can't represent the fee.
+        throw new Error(`Decimals for fee asset ${feeAssetXChain.symbol} are unknown. Cannot process quote fees.`);
+      }
 
       const feeSimpleAsset: SimpleAsset = {
-          chain: feeAsset.chain,
-          ticker: feeAsset.ticker,
-          symbol: feeAsset.symbol,
+          chain: feeAssetXChain.chain,
+          ticker: feeAssetXChain.ticker,
+          symbol: feeAssetXChain.symbol,
           decimals: feeDecimals,
           // contractAddress might be missing if it's a native asset
       };
@@ -218,12 +235,13 @@ export class ThorchainService {
         inputAmountCryptoPrecision: amountToSendCryptoPrecision.amount().toString(),
         outputAsset,
         // Format expectedAmountOut (which is an AssetAmount) to human-readable string
-        outputAmount: formatAssetAmountCurrency({ amount: quote.expectedAmountOut.baseAmount, asset: toAsset, decimal: outputDecimals, trimZeros: true }),
+        // outputDecimals is guaranteed to be a number here due to the earlier check
+        outputAmount: formatAssetAmountCurrency({ amount: quote.expectedAmountOut.baseAmount, asset: toAsset, decimal: outputDecimals!, trimZeros: true }),
         expectedOutputAmountCryptoPrecision: quote.expectedAmountOut.baseAmount.amount().toString(),
         fees: {
           asset: feeSimpleAsset,
           totalFeeCryptoPrecision: quote.fees.total.amount().toString(), // Assuming quote.fees.total is BaseAmount
-          totalFeeHumanReadable: formatAssetAmountCurrency({ amount: quote.fees.total, asset: feeAsset, decimal: feeDecimals, trimZeros: true }),
+          totalFeeHumanReadable: formatAssetAmountCurrency({ amount: quote.fees.total, asset: feeAssetXChain, decimal: feeDecimals, trimZeros: true }),
         },
         slippageBps: quote.slippageBps.toNumber(),
         router: quote.router,
@@ -469,40 +487,44 @@ export class ThorchainService {
               // or we fetch a separate token list that includes decimals.
               // THORChain itself often assumes 8 decimals for its internal math,
               // but for UI and client-side operations, true decimals are needed.
-              // TODO: Enhance decimal fetching for listed assets.
-              const decimals = this.getAssetDecimals(xchainAsset); // This might be a rough guess
+              const decimals = this.getAssetDecimals(xchainAsset); // This can now return undefined
 
- თვით              // Try to extract contract address if it's an ERC20 token
-              let contractAddress: string | undefined = undefined;
-              if (xchainAsset.chain === Chain.Ethereum || xchainAsset.chain === Chain.Avalanche || xchainAsset.chain === Chain.BinanceSmartChain) {
-                if (xchainAsset.symbol.includes('-') && xchainAsset.ticker.toUpperCase() !== xchainAsset.chain) { // Basic check for ERC20 like SYMBOL-ADDRESS
-                  contractAddress = xchainAsset.symbol.substring(xchainAsset.ticker.length + 1);
+              if (decimals === undefined) {
+                console.warn(`Excluding asset ${xchainAsset.symbol} from available list because its decimals are unknown.`);
+              } else {
+                // Try to extract contract address if it's an ERC20 token
+                let contractAddress: string | undefined = undefined;
+                if (xchainAsset.chain === Chain.Ethereum || xchainAsset.chain === Chain.Avalanche || xchainAsset.chain === Chain.BinanceSmartChain) {
+                  if (xchainAsset.symbol.includes('-') && xchainAsset.ticker.toUpperCase() !== xchainAsset.chain) { // Basic check for ERC20 like SYMBOL-ADDRESS
+                    contractAddress = xchainAsset.symbol.substring(xchainAsset.ticker.length + 1);
+                  }
                 }
-              }
 
-              assets.push({
-                chain: xchainAsset.chain,
-                ticker: xchainAsset.ticker,
-                symbol: xchainAsset.symbol, // Full XChain asset string
-                name: `${xchainAsset.ticker} (${xchainAsset.chain})`, // Simple name for now
-                contractAddress: contractAddress,
-                decimals: decimals, // Placeholder, needs to be accurate
-                source: 'thorchain',
-                // iconUrl: Figure out how to get icon URLs, maybe map common tickers
-              });
-              addedSymbols.add(xchainAsset.symbol);
+                assets.push({
+                  chain: xchainAsset.chain,
+                  ticker: xchainAsset.ticker,
+                  symbol: xchainAsset.symbol, // Full XChain asset string
+                  name: `${xchainAsset.ticker} (${xchainAsset.chain})`, // Simple name for now
+                  contractAddress: contractAddress,
+                  decimals: decimals, // Now guaranteed to be a number if asset is included
+                  source: 'thorchain',
+                  // iconUrl: Figure out how to get icon URLs, maybe map common tickers
+                });
+                addedSymbols.add(xchainAsset.symbol);
+              }
             }
           }
         }
         // THORChain RUNE is also an asset
         const runeAsset = assetFromString('THOR.RUNE');
-        if (runeAsset && !addedSymbols.has(runeAsset.symbol)) {
+        const runeDecimals = this.getAssetDecimals(runeAsset);
+        if (runeAsset && runeDecimals !== undefined && !addedSymbols.has(runeAsset.symbol)) {
             assets.push({
                 chain: runeAsset.chain,
                 ticker: runeAsset.ticker,
                 symbol: runeAsset.symbol,
                 name: 'THORChain RUNE',
-                decimals: this.getAssetDecimals(runeAsset),
+                decimals: runeDecimals,
                 source: 'thorchain',
             });
             addedSymbols.add(runeAsset.symbol);

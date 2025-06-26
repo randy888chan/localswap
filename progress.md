@@ -117,7 +117,42 @@
 *   Tasks related to Rango integration under "Milestone 1.3" (specifically 1.3.5, 1.3.6, 1.3.7) are now considered complete in the context of the *previous* architecture. Future work will focus on the new stack.
 *   The planning and assessment for this technology pivot are now complete.
 
-**Next Steps:** New tasks should be created based on the guidance in `AGENTS.md` to implement the Particle Network, Thorchain/XChainJS, and ZetaChain integrations. For example:
-    *   "Task: Integrate Particle Network for User Authentication and Wallet Management."
-    *   "Task: Implement Core Swap Functionality with Thorchain via XChainJS."
-    *   "Task: Research and Define ZetaChain Integration Points for Omnichain Logic."
+**Next Steps & Progress on New Technology Stack:**
+
+*   **Task: Project Setup and Initial Refinement for New Tech Stack**
+    *   [x] Review `project.md` and update for Particle Network, ZetaChain, Thorchain/XChainJS.
+    *   [x] Identify and add missing SDKs to `package.json` (`@xchainjs/xchain-bsc`, `@xchainjs/xchain-avax`, `@xchainjs/xchain-cosmos`, `@xchainjs/xchain-thorchain`).
+    *   [x] Run `npm install` to update dependencies.
+*   **Task: Integrate Particle Network for User Authentication and Wallet Management.**
+    *   [x] Review existing `lib/particle.ts` and `components/ParticleAuthContext.tsx`.
+    *   [x] Confirm core logic for Particle Auth (social/email login) and Particle Connect (WaaS/external wallets) is in place.
+    *   [x] Refine `disconnectWallet` logic in context.
+    *   [x] Verify UI components (`Header.tsx`) integrate with the context for login, user info display, and wallet actions.
+    *   [x] Confirm session management is handled by Particle SDKs and context rehydration.
+*   **Task: Implement Core Swap Functionality with Thorchain via XChainJS.**
+    *   [x] Review existing `src/services/ThorchainService.ts`.
+    *   [x] Confirm service structure for client management, asset handling, quotes, approvals, swap execution, and status tracking.
+    *   [x] Implement stricter decimal handling in `getAssetDecimals`, `getSwapQuote`, and `getAvailableAssets`.
+    *   [x] Review `app/dex/page.tsx` for integration with `ThorchainService`, including signer injection from Particle context.
+    *   [ ] Address full non-EVM source asset swap capabilities (requires deeper Particle integration for non-EVM signing).
+*   **Task: ZetaChain Integration - Initial Research & Basic Setup.**
+    *   [x] Review existing `src/services/ZetaChainService.ts`.
+    *   [x] Confirm service structure for client initialization, listing ZRC-20s (`listSupportedForeignCoins`), asset deposits (`depositAssetToZetaChain`), basic ZRC-20 swap quotes, and CCTX tracking.
+    *   [x] Add `formatUnits` import.
+    *   [x] Review `app/dex/page.tsx` for basic ZetaChain service integration (displaying ZRC-20s).
+*   **Task: Refactor Existing P2P and Dashboard Features.**
+    *   [x] Confirm LocalCoinSwap P2P (read-only parts) remain operational with no immediate changes needed for Particle integration.
+    *   [x] Update User Dashboard (`app/dashboard/page.tsx`) to display user/wallet info from Particle context.
+    *   [x] Simulate Thorchain transaction history display in Dashboard UI (actual data requires backend).
+*   **Task: Advanced ZetaChain Integration (Omnichain Smart Contracts - Conceptual).**
+    *   [x] Outline "Swap and Call" use case.
+    *   [x] Enhance `ZetaChainService.ts` with structured (placeholder) methods for `executeZRC20Swap` and `callRemoteContractWithMessage`.
+    *   [ ] Full implementation of advanced ZetaChain methods (requires specific SDK deep-dive and testing environment).
+    *   [ ] Design and develop custom omnichain smart contracts on ZetaChain (if specific use cases are finalized and require them).
+*   **Task: Comprehensive Testing (Conceptual Outline & Initial Unit Tests).**
+    *   [x] Review existing unit tests for services.
+    *   [x] Add unit test outline for `ThorchainService.checkAndRequestApproval`.
+    *   [ ] Develop further unit tests for `ThorchainService` and `ZetaChainService` critical functions.
+    *   [ ] Develop unit tests for UI components (`Header.tsx`, `DexPage.tsx`).
+    *   [ ] Define and (conceptually) prepare for integration tests (Particle Auth -> Service flows).
+    *   [ ] Define and (conceptually) prepare for E2E tests (login, P2P, swap flows).

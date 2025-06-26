@@ -168,16 +168,30 @@ export const ParticleAuthProvider: React.FC<{ children: ReactNode }> = ({ childr
     setIsLoadingWallet(true);
     try {
       await particleDisconnectWallet(); // This disconnects external wallets via Particle Connect
-      // If the currently active wallet was the embedded Particle wallet, logging out is the way to "disconnect" it.
-      // So, if walletAccounts points to an embedded wallet, we might just clear it here,
-      // or rely on logout to clear it. For simplicity, clearing it here.
-      if (userInfo && walletAccounts && userInfo.wallets?.some(w => w.public_address === walletAccounts[0])) {
-        // This was an embedded wallet. The actual "disconnection" is logout.
-        // For now, just clearing the local state. Logout will do the full clear.
+
+      // After external disconnect, if user is still logged in via Particle Auth,
+      // set walletAccounts to their embedded wallet. Otherwise, clear it.
+      const currentUserInfo = particleGetUserInfo(); // Re-fetch or use state userInfo
+      if (currentUserInfo) {
+        const embeddedEvmWallet = currentUserInfo.wallets?.find(w => w.chain_name.toLowerCase() === 'evm_chain');
+        if (embeddedEvmWallet) {
+          setWalletAccounts([embeddedEvmWallet.public_address]);
+        } else {
+          setWalletAccounts(null); // Should not happen if userInfo is valid
+        }
+      } else {
+        setWalletAccounts(null);
       }
-      setWalletAccounts(null);
     } catch (error) {
       console.error('Disconnect wallet failed in context:', error);
+      // Even on error, try to reset to a sane state
+      const currentUserInfo = particleGetUserInfo();
+      if (currentUserInfo) {
+        const embeddedEvmWallet = currentUserInfo.wallets?.find(w => w.chain_name.toLowerCase() === 'evm_chain');
+        setWalletAccounts(embeddedEvmWallet ? [embeddedEvmWallet.public_address] : null);
+      } else {
+        setWalletAccounts(null);
+      }
     } finally {
       setIsLoadingWallet(false);
     }

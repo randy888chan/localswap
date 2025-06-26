@@ -1,6 +1,7 @@
 import { ZetaChainClient } from '@zetachain/toolkit/client';
 import { ZetaChainClientParams, GetQuoteResponse, GetFeesResponse, SendParams } from '@zetachain/toolkit/types';
 import { Signer } from 'ethers'; // Using ethers v5 from ZetaChain toolkit's dependency
+import { formatUnits, parseUnits } from 'ethers/lib/utils'; // Import for formatting and parsing amounts
 
 import { ForeignCoin } from '@zetachain/toolkit/types'; // Assuming this type exists
 import { Chain } from '@xchainjs/xchain-util'; // For mapping chain_id to XChain Chain
@@ -52,8 +53,9 @@ export class ZetaChainService {
       // and how the toolkit expects connected chain info.
       // The toolkit's examples often show direct use with window.ethereum.
       // We are adapting it to use the signer from Particle Network.
+      const zetaNetwork = process.env.NEXT_PUBLIC_ZETACHAIN_NETWORK === 'mainnet' ? 'mainnet' : 'testnet';
       const params: ZetaChainClientParams = {
-        network: "testnet", // "mainnet" or "testnet" (for ZetaChain network itself)
+        network: zetaNetwork, // "mainnet" or "testnet" (for ZetaChain network itself)
         // The 'chains' config here is for ZetaChain's understanding of connected chains.
         // It might not be directly derived from the signer for all chains.
         // This part needs careful review of @zetachain/toolkit documentation for use with an arbitrary EIP-1193 signer.
@@ -295,31 +297,70 @@ export class ZetaChainService {
   // This would likely use a method like `client.swap(...)` if available, or interact with a DEX contract on ZetaChain.
   // The `client.send(...)` method with appropriate parameters for a swap router might be used.
   public async executeZRC20Swap(
-    // Parameters will depend on how swaps are done: quote object, specific params, etc.
-    // For example, if using a router contract:
-    // routerAddress: string,
-    // fromZRC20: string,
-    // toZRC20: string,
-    // amountIn: string,
-    // amountOutMin: string,
-    // deadline: number,
-    // recipient: string
+    fromAsset: AppSimpleAsset,
+    toAsset: AppSimpleAsset, // Target ZRC20 asset
+    amountInHumanReadable: string,
+    // amountOutMinHumanReadable: string, // Usually derived from quote with slippage
+    zetaChainRouterAddress: string, // Address of the DEX router on ZetaChain
+    deadline?: number // Optional: swap deadline timestamp
   ): Promise<string | null> {
-    if (!this.isInitialized() || !this.client) {
-      console.error("ZetaChainService not initialized.");
+    if (!this.isInitialized() || !this.client || !this.evmSigner) {
+      console.error("ZetaChainService not initialized or signer not available.");
       return null;
     }
+    if (!fromAsset.contractAddress || !fromAsset.decimals) {
+        console.error("From asset details (contractAddress, decimals) are incomplete.");
+        return null;
+    }
+
     try {
-      // sendParams needs to be constructed according to @zetachain/toolkit documentation
-      // This might involve specifying the message, recipient, amount, etc.
-      // This is highly dependent on the ZetaChain toolkit's API for swaps.
-      // It might involve calling a specific swap function on the client or preparing a transaction
-      // for a known DEX router contract on ZetaChain.
-      // For now, this is a placeholder.
-      console.warn("executeZRC20Swap is not fully implemented. Needs specific ZetaChain swap logic.");
-      // const tx = await this.client.someSwapMethod(...);
-      // return tx.hash;
-      throw new Error("executeZRC20Swap not implemented.");
+      const amountInCryptoPrecision = parseUnits(amountInHumanReadable, fromAsset.decimals);
+      const recipientAddress = await this.evmSigner.getAddress();
+      const currentTimestamp = Math.floor(Date.now() / 1000);
+      const swapDeadline = deadline || currentTimestamp + 60 * 20; // 20 minutes default deadline
+
+      // 1. Approve the router to spend the fromAsset ZRC20
+      // The ZetaChainClient might have a helper for ZRC20 approval, or we use ethers.js directly
+      // For simplicity, let's assume a direct approval call using ethers.js pattern,
+      // assuming ZRC20s are ERC20-compliant.
+      // const zrc20Contract = new ethers.Contract(fromAsset.contractAddress, ZRC20_ABI_MINIMAL, this.evmSigner);
+      // const approveTx = await zrc20Contract.approve(zetaChainRouterAddress, amountInCryptoPrecision);
+      // await approveTx.wait(); // Wait for approval confirmation
+      // console.log(`Approved ZRC20 ${fromAsset.symbol} for router ${zetaChainRouterAddress}, tx: ${approveTx.hash}`);
+      // OR the ZetaChainClient might have a utility like:
+      // await this.client.approveZRC20(fromAsset.contractAddress, zetaChainRouterAddress, amountInHumanReadable);
+      // This part needs to align with @zetachain/toolkit's actual ZRC20 interaction methods.
+      // For now, let's assume approval is handled or will be handled by a specific client method.
+      // The toolkit's `sendTransaction` might be generic enough if we construct the ABI call.
+      console.log(`executeZRC20Swap: Approval step for ${fromAsset.symbol} to router ${zetaChainRouterAddress} needs to be implemented based on toolkit specifics.`);
+
+
+      // 2. Execute the swap
+      // This is highly dependent on the ZetaChainClient's API for swaps or contract interaction.
+      // It might be a high-level `swapTokens` method or a generic `sendTransaction`
+      // where we provide the router address, function signature, and parameters.
+      // Example structure for a generic contract call (illustrative):
+      // const swapTx = await this.client.send({
+      //   contract: zetaChainRouterAddress,
+      //   method: 'swapExactTokensForTokens', // Or similar Uniswap V2 router function
+      //   args: [
+      //     amountInCryptoPrecision.toString(),
+      //     ethers.utils.parseUnits(amountOutMinHumanReadable, toAsset.decimals).toString(), // amountOutMin
+      //     [fromAsset.contractAddress, toAsset.contractAddress], // path
+      //     recipientAddress, // to
+      //     swapDeadline,     // deadline
+      //   ],
+      //   // value: '0', // If no native ZETA is sent with the call itself
+      //   // gasLimit, etc.
+      // });
+      // return swapTx.hash; // Assuming it returns a transaction hash or similar object
+
+      console.warn("executeZRC20Swap is using placeholder logic and needs actual ZetaChainClient swap method integration.");
+      // Placeholder: Simulate a call and return a mock hash
+      // In a real scenario, this would involve constructing and sending a transaction
+      // to the ZetaChain router contract using this.client methods.
+      return `mock-zeta-swap-tx-${Date.now()}`;
+
     } catch (error) {
       console.error("Error executing ZetaChain ZRC20 swap:", error);
       return null;
@@ -361,6 +402,64 @@ export class ZetaChainService {
     } catch (error) {
         console.error("Error fetching ZetaChain fees:", error);
         return null;
+    }
+  }
+
+  public async callRemoteContractWithMessage(
+    destinationChainId: number, // ZetaChain's ID for the target chain
+    destinationContractAddress: string, // Address of the contract on the destination chain
+    encodedFunctionCallData: string, // Hex string of the encoded function call
+    zetaAmountToSendAsValueHumanReadable: string = "0", // Amount of ZRC-20 ZETA to send (human-readable)
+    gasLimitForRemoteCall?: string, // Gas limit for the transaction on the destination chain
+    processingFeeAmountHumanReadable?: string, // Fee for ZetaChain processing, in ZETA (human-readable)
+    customMessage?: string // Optional: a simple string message if the target is not a contract or for additional info
+  ): Promise<string | null> { // Returns CCTX hash
+    if (!this.isInitialized() || !this.client || !this.evmSigner) {
+      console.error("ZetaChainService not initialized or signer not available.");
+      return null;
+    }
+
+    try {
+      // Convert human-readable ZETA amounts to crypto precision (assuming ZETA has 18 decimals)
+      const zetaDecimals = 18;
+      const valueToSend = parseUnits(zetaAmountToSendAsValueHumanReadable, zetaDecimals);
+
+      // Processing fee also needs to be in crypto precision if the toolkit expects that.
+      // This depends on how `this.client.send` or similar method handles fees.
+      // Let's assume for now that fees might be specified or deduced by the toolkit.
+
+      // The exact method on `this.client` to achieve this needs to be identified from @zetachain/toolkit.
+      // It might be a specific method like `callRemoteMethod` or a more generic `send` or `ccTransfer`.
+      // Key parameters would be:
+      // - Destination chain ID
+      // - Destination contract address (recipient)
+      // - Calldata (message)
+      // - Value (ZETA amount)
+      // - Gas parameters for the destination transaction
+      // - Potentially parameters for ZetaChain's processing fee.
+
+      // Example parameters for a hypothetical `this.client.crossChainCall`
+      const params = {
+        recipient: destinationContractAddress,
+        destinationChainId: destinationChainId,
+        message: encodedFunctionCallData, // This should be bytes (hex string)
+        amount: valueToSend.toString(), // Amount of ZETA to send with the call
+        // gasLimitOnDestination: gasLimitForRemoteCall, // Toolkit might have specific ways to set this
+        // processingFee: parseUnits(processingFeeAmountHumanReadable || "0", zetaDecimals).toString(), // Example
+        // customMessage: customMessage // if applicable
+      };
+
+      console.log("Preparing to call remote contract with message:", params);
+
+      // const cctx = await this.client.someCrossChainCallMethod(params);
+      // return cctx.hash; // Or however the CCTX hash is returned
+
+      console.warn("callRemoteContractWithMessage is using placeholder logic and needs actual ZetaChainClient method integration for CCTX.");
+      throw new Error("callRemoteContractWithMessage not fully implemented.");
+
+    } catch (error) {
+      console.error("Error in callRemoteContractWithMessage:", error);
+      return null;
     }
   }
 }

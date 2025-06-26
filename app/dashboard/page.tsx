@@ -35,15 +35,33 @@ export default function Dashboard() {
       console.log('Dashboard: User and wallet connected. Fetch transaction history here.');
       // Example:
       // const loadHistory = async () => {
-      //   // const history = await fetch(`/api/user/transactions?wallet=${walletAccounts[0]}`).then(res => res.json());
+      //   // const history = await fetch(`/api/user/transactions?wallet=${walletAccounts[0]}&userId=${userInfo.uuid}`).then(res => res.json());
       //   // setTransactionHistory(history);
       // };
       // loadHistory();
-      setTransactionHistory([
-        // Mock data:
-        // {id: '1', type: 'swap', description: '0.1 ETH -> 200 USDC', status: 'Completed', timestamp: new Date().toISOString()},
-        // {id: '2', type: 'transfer', description: 'Sent 0.05 BTC', status: 'Pending', timestamp: new Date().toISOString()}
-      ]);
+
+      // Simulate fetching Thorchain swap history
+      const mockThorchainHistory: TransactionHistoryItem[] = [
+        {
+          id: 'thor_swap_1',
+          type: 'swap',
+          description: 'Swapped 0.05 ETH for 0.001 BTC via THORChain',
+          status: 'Completed',
+          timestamp: new Date(Date.now() - 3600000 * 2).toISOString(), // 2 hours ago
+          detailsLink: `https://viewblock.io/thorchain/tx/MOCK_THOR_TX_HASH_1`
+        },
+        {
+          id: 'thor_swap_2',
+          type: 'swap',
+          description: 'Swapped 100 USDT (ERC20) for 0.02 ETH via THORChain',
+          status: 'Pending',
+          timestamp: new Date(Date.now() - 3600000 * 1).toISOString(), // 1 hour ago
+          detailsLink: `https://viewblock.io/thorchain/tx/MOCK_THOR_TX_HASH_2`
+        },
+      ];
+      // In a real app, you'd fetch this from your backend, which gets it from DB
+      // and potentially augments with live status from ThorchainService if needed.
+      setTransactionHistory(mockThorchainHistory);
     }
     // Old Rango-specific logic:
     // const loadSwaps = async () => {
