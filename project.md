@@ -2,7 +2,7 @@
 
 **Step 1: Define the Project Requirements**
 
-*   **Purpose of the Application:** A unified crypto exchange platform that combines P2P crypto-to-fiat trading (like LocalCoinSwap) with a cross-chain DEX and aggregator (like Rango Exchange). The goal is to provide a seamless experience for users, eliminating the need to switch between multiple applications.
+*   **Purpose of the Application:** A unified crypto exchange platform that combines P2P crypto-to-fiat trading (like LocalCoinSwap) with a cross-chain DEX and aggregator leveraging Thorchain for liquidity, ZetaChain for omnichain capabilities, and Particle Network for user wallets and authentication. The goal is to provide a seamless experience for users, eliminating the need to switch between multiple applications.
 *   **Goals of the Application:**
     *   Simplify the user experience for buying, selling, and swapping cryptocurrencies.
     *   Reduce the complexity associated with cross-chain transactions.
@@ -11,7 +11,7 @@
 *   **Features List:**
     *   **Landing Page:** A user-friendly landing page that guides users based on their needs (buy/sell crypto with fiat or swap between cryptocurrencies).
     *   **P2P Trading:** Integration of LocalCoinSwap's P2P functionality, allowing users to buy and sell crypto with fiat using various payment methods.
-    *   **Cross-Chain DEX & Aggregator:** Integration of Rango Exchange's features, enabling users to swap tokens across different blockchains.
+    *   **Cross-Chain DEX & Aggregator:** Integration of Thorchain (via XChainJS) for core cross-chain swaps and ZetaChain for advanced omnichain logic and ZRC-20 token management. User authentication and wallet interactions will be handled by Particle Network.
     *   **User Dashboard:** A dashboard for users to track their transaction history, balances, and other relevant information.
     *   **Dynamic Landing Pages:** Programmatically generated landing pages based on product offerings and user geography (for SEO and targeted marketing).
     *   **Multilingual Support:** Dynamic translation of content, potentially leveraging LLMs for content generation and translation, with caching for performance.
@@ -46,23 +46,24 @@
     *   **Backend:** Use a combination of Next.js API routes and Cloudflare Workers for different parts of the backend logic.
         *   Next.js API routes are good for handling requests directly related to the frontend (e.g., user authentication, fetching user-specific data).
         *   Cloudflare Workers can be used for:
-            *   Proxying and transforming requests to the LocalCoinSwap and Rango Exchange APIs.
+            *   Proxying and transforming requests to the LocalCoinSwap API. Interactions with Thorchain, ZetaChain, and Particle Network might be direct from the frontend/Next.js backend or via specific workers as needed for security or complex orchestration.
             *   Implementing caching logic.
             *   Handling dynamic content generation (e.g., multilingual translations, programmatically generated landing pages).
             *   Running background tasks (if needed).
     *   **Microservices (eventually):** As the application grows and you add more features (e.g., more payment gateways, direct integrations with blockchains), consider breaking down the backend into smaller, independent microservices. This will improve maintainability and scalability.
 *   **Database Schema Design:**
-    *   **Users:** `user_id` (primary key), `email`, `password_hash`, `profile_data`, `registration_date`, `kyc_status` (if applicable)
-    *   **Transactions:** `transaction_id` (primary key), `user_id` (foreign key), `type` (buy, sell, swap), `amount`, `currency_from`, `currency_to`, `status`, `timestamp`, `payment_method_id` (if applicable), `blockchain_tx_id` (if applicable)
+    *   **Users:** `user_id` (primary key), `email` (if not solely relying on Particle for this), `particle_uuid` (string, from Particle userInfo, if needed for mapping), `profile_data` (potentially managed/augmented by Particle Network), `registration_date`, `kyc_status` (if applicable). Note: `password_hash` may become less relevant if primary auth is social/email via Particle.
+    *   **Transactions:** `transaction_id` (primary key), `user_id` (foreign key), `type` (buy, sell, swap_thorchain, swap_zetachain_zrc20, deposit_zetachain, cctx_zetachain), `input_asset_symbol`, `input_amount`, `output_asset_symbol`, `output_amount`, `status`, `timestamp`, `blockchain_tx_id_inbound` (string), `blockchain_tx_id_outbound` (string, if applicable), `thorchain_details` (JSON), `zetachain_details` (JSON), `particle_details` (JSON, e.g. for AA UserOps).
     *   **Landing Pages:** `page_id` (primary key), `url_slug`, `content` (JSON or HTML), `geo_target`, `product_focus`, `last_updated`
     *   **Translations:** `translation_id` (primary key), `language_code`, `original_text`, `translated_text`, `source_page_id` (if applicable), `context`
     *   **If needed (for P2P matching, order books, etc.):** You'll need additional tables specific to how you implement P2P trading features. This might involve tables for offers, orders, escrow, etc.
 *   **API Endpoints:**
-    *   `/api/auth/*` (Next.js API routes for user authentication: login, register, logout, etc.)
+    *   `/api/auth/*` (Next.js API routes for user authentication, integrating with Particle Network SDKs. Particle handles much of this client-side, but backend routes may be needed for custom logic or JWT validation.)
     *   `/api/user/*` (Next.js API routes for user data: get profile, update profile, etc.)
     *   `/api/transactions/*` (Next.js API routes for transaction history)
     *   `/api/proxy/localcoinswap/*` (Cloudflare Worker to proxy requests to the LocalCoinSwap API, potentially adding caching or transformation logic)
-    *   `/api/proxy/rango/*` (Cloudflare Worker to proxy requests to the Rango Exchange API)
+    *   `/api/swap/thorchain/*` (For operations like getting quotes, initiating swaps via Thorchain/XChainJS)
+    *   `/api/swap/zetachain/*` (For operations related to ZetaChain, like ZRC-20 interactions or triggering omnichain contract calls)
     *   `/api/landing-pages/*` (Cloudflare Worker to serve dynamically generated landing pages)
     *   `/api/translate` (Cloudflare Worker to handle dynamic translations)
 
@@ -94,18 +95,20 @@
 *   **Feature Development Strategy:**
     *   **Prioritize:**
         1. **Landing Page:** Start with a basic landing page that directs users to either the P2P or DEX/aggregator sections.
-        2. **Core Trading Functionality:** Implement the basic integration with LocalCoinSwap and Rango Exchange APIs, allowing users to perform simple buy/sell and swap operations.
+        2. **Core Trading Functionality:** Implement basic integration with LocalCoinSwap. For DEX functionality, integrate Particle Network for authentication and wallet management, then implement core swap features using Thorchain (via XChainJS). Begin foundational work for ZetaChain interactions.
         3. **User Dashboard:** Create a simple dashboard to display transaction history.
         4. **Dynamic Landing Pages and Multilingual Support:** Implement these features after the core functionality is working.
     *   **Modular Design:**
         *   Create reusable UI components (buttons, forms, cards, etc.).
-        *   Separate API interaction logic into separate modules or services.
+        *   Separate API interaction logic into separate modules or services (e.g., `ParticleAuthService`, `ThorchainService`, `ZetaChainService`).
         *   Use a state management library (e.g., `Zustand` or `Redux Toolkit`) if needed for managing complex application state.
     *   **API Integration:**
-        *   Start by using the provided API examples from LocalCoinSwap and Rango Exchange as a guide.
-        *   Create wrapper functions or services to interact with these APIs, abstracting away the underlying implementation details.
-        *   Use Cloudflare Workers to proxy these API requests, allowing you to add caching, rate limiting, or other middleware logic.
-        *   For faster go to market, you can initially rely on their affiliate programs. Later, you can explore direct integrations for potentially better terms and control.
+        *   Use LocalCoinSwap API examples as a guide for P2P integration.
+        *   Integrate Particle Network SDKs for user authentication (social, email) and wallet management (WaaS, external wallet connections).
+        *   Utilize XChainJS libraries to interact with Thorchain for fetching quotes, constructing transactions, and tracking status. This will involve using various `xchain-client` packages for different blockchains.
+        *   Use ZetaChain SDKs/APIs to interact with the ZetaChain network for ZRC-20 management and potential omnichain smart contract calls. This may involve deploying and interacting with custom smart contracts on ZetaChain's zEVM.
+        *   Cloudflare Workers may be used to proxy requests to LocalCoinSwap. Thorchain, ZetaChain, and Particle Network interactions will primarily be managed through their respective SDKs on the client-side or Next.js backend, with workers used for specific backend logic or security layers if necessary.
+        *   For faster go to market, P2P can rely on LocalCoinSwap's existing model. For DEX, Thorchain offers affiliate fee options.
     *   **Dynamic Landing Pages:**
         *   Use Next.js's `getStaticPaths` and `getStaticProps` to pre-render landing pages at build time whenever possible.
         *   For pages that need to be generated on-demand (e.g., based on user location or very specific product combinations), use a Cloudflare Worker to generate the content dynamically.
@@ -187,6 +190,10 @@
     *   **Dependency Management:** Regularly update dependencies to patch known vulnerabilities. Use tools like `npm audit` or `yarn audit` to check for vulnerabilities.
     *   **Least Privilege:** Grant users and services only the minimum necessary permissions.
     *   **OWASP Top 10:** Familiarize yourself with the OWASP Top 10 web application security risks and take steps to mitigate them.
+    *   **Specific Technology Considerations:**
+        *   **Particle Network:** Understand the security model of Wallet-as-a-Service, master password, payment password, and social recovery mechanisms. Securely handle any client-side SDK configurations.
+        *   **Thorchain/XChainJS:** Ensure correct memo construction for all transactions to avoid fund loss. Validate inputs thoroughly before interacting with XChainJS clients. Manage private keys/phrases securely if not using Particle's WaaS exclusively for signing.
+        *   **ZetaChain:** If deploying custom zEVM smart contracts, follow Solidity security best practices (e.g., OpenZeppelin contracts, reentrancy guards, thorough testing, audits). Validate all inputs and outputs for CCTX interactions.
 *   **Data Privacy Compliance:**
     *   **GDPR:**
         *   Obtain explicit consent for collecting and processing user data.
@@ -227,7 +234,7 @@
     *   Provide clear and concise instructions on how to use the different features of the application.
     *   Include screenshots or videos to illustrate key concepts.
     *   Create an FAQ section to address common questions.
-    *   Use the provided LocalCoinSwap and Rango Exchange FAQs as a starting point and adapt them to your unified platform.
+    *   Use the provided LocalCoinSwap FAQs and create new FAQs relevant to Particle Network wallet usage, Thorchain swaps, and any ZetaChain functionalities.
 
 **Step 14: Compliance and Legal Considerations**
 
@@ -251,6 +258,8 @@
 *   **Content Delivery Network (CDN):** Cloudflare acts as a CDN, so you don't need to set up a separate CDN.
 
 **Prompt Chain Examples (using `aider`)**
+
+*Note: The following prompt chain examples are illustrative and were based on the previous Rango Exchange integration. They will need to be significantly updated or replaced to reflect the new technology stack: Particle Network, Thorchain/XChainJS, and ZetaChain. New prompt chains will be developed as these features are implemented in later plan steps.*
 
 **Chain 1: Initial Project Setup**
 
