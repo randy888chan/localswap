@@ -2,19 +2,25 @@ import { ZetaChainClient } from '@zetachain/toolkit/client';
 import { ZetaChainClientParams, GetQuoteResponse, GetFeesResponse, SendParams } from '@zetachain/toolkit/types';
 import { Signer } from 'ethers'; // Using ethers v5 from ZetaChain toolkit's dependency
 
+import { ForeignCoin } from '@zetachain/toolkit/types'; // Assuming this type exists
+import { Chain } from '@xchainjs/xchain-util'; // For mapping chain_id to XChain Chain
+import { SimpleAsset as AppSimpleAsset } from './ThorchainService'; // Use the unified SimpleAsset
+
 // Define a simpler Asset type for UI and function parameters, similar to ThorchainService
 // This might need to be aligned or unified later.
-export interface ZetaSimpleAsset {
-  chain_id: number; // ZetaChain's chain_id for the connected chain
-  contract?: string; // Contract address for ZRC20 or native asset identifier
-  symbol: string;
-  decimals: number;
-  name?: string;
-}
+// export interface ZetaSimpleAsset { // No longer needed, using AppSimpleAsset
+//   chain_id: number; // ZetaChain's chain_id for the connected chain
+//   contract?: string; // Contract address for ZRC20 or native asset identifier
+//   symbol: string;
+//   decimals: number;
+//   name?: string;
+// }
 
 export interface ZetaQuote {
-  inputAsset: ZetaSimpleAsset;
-  outputAsset: ZetaSimpleAsset;
+  // inputAsset: ZetaSimpleAsset; // Use AppSimpleAsset
+  // outputAsset: ZetaSimpleAsset; // Use AppSimpleAsset
+  inputAsset: AppSimpleAsset;
+  outputAsset: AppSimpleAsset;
   inputAmount: string; // Human-readable
   outputAmount: string; // Human-readable
   fees: any; // Define more specifically based on GetFeesResponse
@@ -100,46 +106,205 @@ export class ZetaChainService {
     }
   }
 
-  public async listSupportedForeignCoins(): Promise<any[]> { // Replace 'any' with actual type from toolkit
+  // Helper to map ZetaChain chain_id to XChainJS Chain
+  private mapZetaChainIdToXChain(zetaChainId: number): Chain | undefined {
+    // This mapping needs to be comprehensive based on ZetaChain's supported chains
+    // Refer to: https://www.zetachain.com/docs/reference/network/api/ (or similar in toolkit)
+    // Example mapping:
+    if (zetaChainId === 5) return Chain.Ethereum; // Goerli
+    if (zetaChainId === 1) return Chain.Ethereum; // Ethereum Mainnet
+    if (zetaChainId === 56) return Chain.BinanceSmartChain; // BSC Mainnet
+    if (zetaChainId === 97) return Chain.BinanceSmartChain; // BSC Testnet
+    if (zetaChainId === 137) return Chain.Polygon; // Polygon Mainnet
+    if (zetaChainId === 80001) return Chain.Polygon; // Polygon Mumbai Testnet
+    if (zetaChainId === 18332) return Chain.Bitcoin; // Bitcoin Testnet
+    if (zetaChainId === 8332) return Chain.Bitcoin; // Bitcoin Mainnet (check actual ID)
+    // Add more mappings as needed
+    console.warn(`Unmapped ZetaChain foreign_chain_id: ${zetaChainId}`);
+    return undefined;
+  }
+
+  public async listSupportedForeignCoins(): Promise<AppSimpleAsset[]> {
     if (!this.isInitialized() || !this.client) {
       console.error("ZetaChainService not initialized.");
       return [];
     }
     try {
-      const foreignCoins = await this.client.getForeignCoins();
-      console.log("Supported Foreign Coins (ZRC20s):", foreignCoins);
-      return foreignCoins;
+      const foreignCoins: ForeignCoin[] = await this.client.getForeignCoins();
+      console.log("Fetched ZetaChain Foreign Coins:", foreignCoins);
+
+      const assets: AppSimpleAsset[] = foreignCoins.map(coin => {
+        const originalChain = this.mapZetaChainIdToXChain(coin.foreign_chain_id);
+        // The 'symbol' from ForeignCoin is the ticker on the original chain (e.g., ETH, BTC, USDT)
+        // The 'name' from ForeignCoin is often more descriptive (e.g., "Ethereum", "Tether USD")
+
+        // Construct the XChainJS-style symbol for the ZRC20 token on ZetaChain.
+        // Format: ZETA.<ASSET_ON_ZETA> (e.g., ZETA.gETH, ZETA.tBTC)
+        // Or, if we want to represent the ZRC20 itself as an asset on ZetaChain:
+        // Chain: ZetaChain (need to add this to XChainJS Chain enum or handle it)
+        // Symbol: ZETA.<TICKER> or use coin.symbol directly if it's the ZRC20 ticker.
+        // ContractAddress: coin.zrc20_contract_address
+        // For now, we represent the ZRC20 token itself, living on ZetaChain.
+        // We'd need a Chain.ZetaChain identifier. Let's use a placeholder or assume one.
+        // The key here is that these are ZRC20s *on* ZetaChain.
+
+        // Using a string literal for ZetaChain for now.
+        // TODO: Add "ZetaChain" to XChainJS Chain enum or handle string chain identifiers consistently.
+        const zetaChainIdentifier = 'ZetaChain' as Chain;
+
+        return {
+          chain: zetaChainIdentifier,
+          ticker: coin.symbol, // This is the ticker of the ZRC20, e.g., "gETH", "tBTC"
+          symbol: `${zetaChainIdentifier}.${coin.symbol}`, // Or use zrc20_contract_address for uniqueness if needed
+          name: coin.name || coin.symbol,
+          contractAddress: coin.zrc20_contract_address,
+          decimals: coin.decimals,
+          // iconUrl: coin.icon_url, // If available from ForeignCoin type
+          source: 'zetachain',
+          // Store original chain info if needed for display or other logic
+          // originalChain: originalChain,
+          // originalChainId: coin.foreign_chain_id,
+        };
+      }).filter(asset => asset.chain !== undefined); // Filter out unmapped chains for now
+
+      return assets;
     } catch (error) {
-      console.error("Error fetching foreign coins:", error);
+      console.error("Error fetching ZetaChain foreign coins:", error);
       return [];
     }
   }
+
+  public async depositAssetToZetaChain(
+    amount: string, // Human-readable amount
+    assetAddress?: string, // Optional: ERC20 contract address on source chain. Undefined for native gas token.
+    zetaReceiverAddress: string, // User's address on ZetaChain (or target contract)
+    sourceChainId: number, // To select correct gateway if needed, though client might handle it
+    gasLimit?: string, // Optional gas limit for the transaction
+    gasPrice?: string // Optional gas price for the transaction
+  ): Promise<string | null> { // Returns transaction hash
+    if (!this.isInitialized() || !this.client || !this.evmSigner) {
+      console.error("ZetaChainService not initialized or signer not available.");
+      throw new Error("ZetaChainService not initialized or signer not available.");
+    }
+
+    try {
+      const currentAddress = await this.evmSigner.getAddress();
+      console.log(`Initiating deposit from ${currentAddress} on chain ID ${sourceChainId}`);
+      console.log(`Depositing ${amount} of ${assetAddress || 'Native Gas Token'} to ${zetaReceiverAddress} on ZetaChain.`);
+
+      // Construct arguments for evmDeposit
+      // The ZetaChainClient should handle which gateway to use based on its configuration and the connected signer's chain.
+      const depositArgs = {
+        amount: amount, // Human-readable string, toolkit should handle conversion
+        erc20: assetAddress, // Address of ERC20, or undefined for native gas token
+        receiver: zetaReceiverAddress,
+        // gatewayEvm: 'OPTIONAL_GATEWAY_ADDRESS', // Usually not needed, client resolves it
+        // revertOptions: { ... }, // Optional
+        txOptions: { // Optional
+          gasLimit: gasLimit, // e.g., "200000"
+          // gasPrice: gasPrice, // e.g., "50000000000" (50 Gwei) - for legacy txns
+          // maxFeePerGas, maxPriorityFeePerGas for EIP-1559 if supported by toolkit and chain
+        },
+      };
+
+      // Type assertion needed if the toolkit's evmDeposit expects a more specific args type.
+      const tx = await this.client.evmDeposit(depositArgs as any);
+      console.log('ZetaChain deposit transaction submitted:', tx);
+      return tx.hash; // Assuming tx is a ContractTransaction from ethers
+    } catch (error) {
+      console.error("Error depositing asset to ZetaChain:", error);
+      // Rethrow or handle more gracefully
+      if (error instanceof Error) {
+        throw new Error(`ZetaChain deposit failed: ${error.message}`);
+      }
+      throw new Error("Unknown error during ZetaChain deposit.");
+    }
+  }
+
 
   // Example: Get quote for a swap (if ZetaChain itself provides aggregated swaps or swaps on its pools)
-  public async getSwapQuote(
-    fromAssetSymbol: string, // e.g., "gETH" on Goerli for ZetaChain testnet
-    toAssetSymbol: string,   // e.g., "tBTC" on ZetaChain testnet
-    amount: string,          // Human-readable amount
-    fromChainId: number,
-    toChainId: number
-  ): Promise<GetQuoteResponse | null> {
+  // This is for swaps between ZRC20 tokens *on* ZetaChain
+  public async getZRC20SwapQuote(
+    fromZRC20Asset: AppSimpleAsset, // ZRC20 asset on ZetaChain
+    toZRC20Asset: AppSimpleAsset,   // ZRC20 asset on ZetaChain
+    amount: string                  // Human-readable amount of fromZRC20
+  ): Promise<ZetaQuote | null> {
     if (!this.isInitialized() || !this.client) {
       console.error("ZetaChainService not initialized.");
       return null;
     }
+    if (!fromZRC20Asset.contractAddress || !toZRC20Asset.contractAddress) {
+        console.error("Missing contract address for ZRC20 swap quote.");
+        return null;
+    }
+
     try {
-      // The exact parameters for getQuote will depend on the @zetachain/toolkit version
-      // This is a common pattern, but refer to specific docs.
-      const quote = await this.client.getQuote(fromAssetSymbol, toAssetSymbol, amount, fromChainId, toChainId);
-      return quote;
+      // client.getQuote likely expects ZRC20 contract addresses or symbols known to ZetaChain.
+      // The response type from client.getQuote is GetQuoteResponse from @zetachain/toolkit/types.
+      // We need to map this to our ZetaQuote interface.
+      const rawQuote: GetQuoteResponse = await this.client.getQuote(amount, fromZRC20Asset.contractAddress, toZRC20Asset.contractAddress);
+      console.log("Raw ZetaChain ZRC20 swap quote:", rawQuote);
+
+      // Assuming GetQuoteResponse has structure like: { amountOut: string, someFeeInfo: any }
+      // And that amountOut is in crypto precision of the output ZRC20.
+      // This mapping is speculative and needs to be adjusted based on actual GetQuoteResponse structure.
+      if (!rawQuote || !rawQuote.amountOut) { // Adjust condition based on actual rawQuote structure
+        console.error("Invalid quote structure received from ZetaChain client.getQuote");
+        return null;
+      }
+
+      // We need decimals for the output asset to convert amountOut to human-readable
+      const outputDecimals = toZRC20Asset.decimals;
+      if (outputDecimals === undefined) {
+        console.error(`Decimals for output ZRC20 ${toZRC20Asset.symbol} are unknown.`);
+        return null;
+      }
+
+      // This is a simplified mapping. Actual fee structure from GetQuoteResponse needs to be handled.
+      return {
+        inputAsset: fromZRC20Asset,
+        outputAsset: toZRC20Asset,
+        inputAmount: amount, // Human-readable input
+        // Assuming rawQuote.amountOut is in crypto precision (base units)
+        outputAmount: formatUnits(rawQuote.amountOut.toString(), outputDecimals), // Convert to human-readable
+        fees: rawQuote.feeData || {}, // Placeholder for actual fee data mapping
+      };
     } catch (error) {
-      console.error("Error getting ZetaChain swap quote:", error);
+      console.error("Error getting ZetaChain ZRC20 swap quote:", error);
       return null;
     }
   }
 
-  // Example: Execute a swap or cross-chain message
-  public async sendTransaction(params: SendParams): Promise<string /* txHash */ | null> {
+  // Generic sendTransaction - to be replaced by more specific methods like swap, call, etc.
+  // public async sendTransaction(params: SendParams): Promise<string /* txHash */ | null> {
+  //   if (!this.isInitialized() || !this.client) {
+  //     console.error("ZetaChainService not initialized.");
+  //     return null;
+  //   }
+  //   try {
+  //     const txHash = await this.client.send(params);
+  //     return txHash;
+  //   } catch (error) {
+  //     console.error("Error sending ZetaChain transaction:", error);
+  //     return null;
+  //   }
+  // }
+
+
+  // Placeholder for actually executing a swap of ZRC20s on ZetaChain
+  // This would likely use a method like `client.swap(...)` if available, or interact with a DEX contract on ZetaChain.
+  // The `client.send(...)` method with appropriate parameters for a swap router might be used.
+  public async executeZRC20Swap(
+    // Parameters will depend on how swaps are done: quote object, specific params, etc.
+    // For example, if using a router contract:
+    // routerAddress: string,
+    // fromZRC20: string,
+    // toZRC20: string,
+    // amountIn: string,
+    // amountOutMin: string,
+    // deadline: number,
+    // recipient: string
+  ): Promise<string | null> {
     if (!this.isInitialized() || !this.client) {
       console.error("ZetaChainService not initialized.");
       return null;
@@ -147,15 +312,38 @@ export class ZetaChainService {
     try {
       // sendParams needs to be constructed according to @zetachain/toolkit documentation
       // This might involve specifying the message, recipient, amount, etc.
-      const txHash = await this.client.send(params);
-      return txHash;
+      // This is highly dependent on the ZetaChain toolkit's API for swaps.
+      // It might involve calling a specific swap function on the client or preparing a transaction
+      // for a known DEX router contract on ZetaChain.
+      // For now, this is a placeholder.
+      console.warn("executeZRC20Swap is not fully implemented. Needs specific ZetaChain swap logic.");
+      // const tx = await this.client.someSwapMethod(...);
+      // return tx.hash;
+      throw new Error("executeZRC20Swap not implemented.");
     } catch (error) {
-      console.error("Error sending ZetaChain transaction:", error);
+      console.error("Error executing ZetaChain ZRC20 swap:", error);
       return null;
     }
   }
 
-  // Placeholder for fetching fees for a cross-chain transaction
+  public async trackCCTX(txHash: string): Promise<any | null> { // Replace 'any' with CCTXs type from toolkit
+    if (!this.isInitialized() || !this.client) {
+      console.error("ZetaChainService not initialized.");
+      return null;
+    }
+    try {
+      // The trackCCTX method usually takes an object with `hash`, `json`, `emitter`
+      const cctxStatus = await this.client.trackCCTX({ hash: txHash, json: true });
+      console.log(`CCTX Status for ${txHash}:`, cctxStatus);
+      return cctxStatus;
+    } catch (error) {
+      console.error(`Error tracking CCTX for ${txHash}:`, error);
+      return null;
+    }
+  }
+
+
+  // Placeholder for fetching fees for a cross-chain transaction (deposit, withdraw, message)
   public async getCrossChainFees(
       sourceChainId: number,
       destinationChainId: number,
